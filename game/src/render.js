@@ -1,6 +1,6 @@
-// Painting: everything the player sees. The floor, the cones, the people and
-// the HUD are drawn from the world state and nothing else, so a screenshot
-// staged from the real rules is a frame of the real game.
+// Painting: everything the player sees. Floor, cones, people and HUD are
+// drawn from the world state and nothing else, so a screenshot staged from
+// the real rules is a frame of the real game.
 import { CAMERA, FIELD, GUARD, HUD_HEIGHT, THIEF } from './config.js';
 
 const TITLE_FONT = '700 44px Georgia, serif';
@@ -20,25 +20,25 @@ export function createRenderer(canvas) {
   resize();
   window.addEventListener('resize', resize);
 
-  function transform() {
+  function fitField() {
     const scale = Math.min(canvas.width / FIELD.width, canvas.height / FIELD.height);
     const offsetX = (canvas.width - FIELD.width * scale) / 2;
     const offsetY = (canvas.height - FIELD.height * scale) / 2;
     ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
   }
 
-  function drawCone(x, y, facing, range, halfAngle, color, edgeColor) {
+  function cone(x, y, facing, range, halfAngle, fill, edge) {
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.arc(x, y, range, facing - halfAngle, facing + halfAngle);
     ctx.closePath();
     const gradient = ctx.createRadialGradient(x, y, 10, x, y, range);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(0.55, color);
+    gradient.addColorStop(0, fill);
+    gradient.addColorStop(0.55, fill);
     gradient.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = gradient;
     ctx.fill();
-    ctx.strokeStyle = edgeColor;
+    ctx.strokeStyle = edge;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -48,7 +48,7 @@ export function createRenderer(canvas) {
     ctx.stroke();
   }
 
-  function drawFloor(state) {
+  function paintFloor() {
     ctx.fillStyle = '#17151f';
     ctx.fillRect(0, HUD_HEIGHT, FIELD.width, FIELD.height - HUD_HEIGHT);
     const tile = 80;
@@ -72,7 +72,7 @@ export function createRenderer(canvas) {
     ctx.fillRect(0, HUD_HEIGHT, FIELD.width, 6);
   }
 
-  function drawDressing(level) {
+  function paintDressing(level) {
     for (const p of level.paintings) {
       ctx.fillStyle = '#3a2f1d';
       ctx.fillRect(p.x - 4, p.y - 4, p.w + 8, p.h + 8);
@@ -103,7 +103,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawSolid(s) {
+  function paintSolid(s) {
     if (s.kind === 'pillar') {
       ctx.fillStyle = '#2c2838';
       ctx.fillRect(s.x - 3, s.y - 3, s.w + 6, s.h + 6);
@@ -138,7 +138,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawVault(level, thief) {
+  function paintVault(level, thief) {
     const v = level.vault;
     const glow = ctx.createRadialGradient(v.x, v.y, 4, v.x, v.y, 90);
     glow.addColorStop(0, 'rgba(120, 200, 255, 0.35)');
@@ -173,7 +173,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawDoors(level) {
+  function paintDoors(level) {
     const e = level.exit;
     ctx.fillStyle = '#123524';
     ctx.fillRect(e.x - 34, e.y - 10, 68, 20);
@@ -189,7 +189,7 @@ export function createRenderer(canvas) {
     ctx.fillText('SERVICE', s.x, s.y + 4);
   }
 
-  function drawArtifacts(level) {
+  function paintArtifacts(level) {
     for (const a of level.artifacts) {
       if (a.taken) continue;
       ctx.fillStyle = '#2c2438';
@@ -210,7 +210,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawSmoke(smokes) {
+  function paintSmoke(smokes) {
     for (const s of smokes) {
       const alpha = Math.min(0.75, 0.35 + (s.timer / 6) * 0.4);
       ctx.fillStyle = `rgba(180, 180, 190, ${alpha})`;
@@ -225,12 +225,12 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawGuards(guards) {
+  function paintGuards(guards) {
     for (const g of guards) {
       const hot = g.alertness > 0.5;
-      const color = hot ? 'rgba(255, 70, 55, 0.34)' : 'rgba(255, 205, 80, 0.30)';
+      const fill = hot ? 'rgba(255, 70, 55, 0.34)' : 'rgba(255, 205, 80, 0.30)';
       const edge = hot ? 'rgba(255, 70, 55, 0.75)' : 'rgba(255, 205, 80, 0.55)';
-      drawCone(g.x, g.y, g.facing, GUARD.visionRange, GUARD.visionHalfAngle, color, edge);
+      cone(g.x, g.y, g.facing, GUARD.visionRange, GUARD.visionHalfAngle, fill, edge);
     }
     for (const g of guards) {
       ctx.fillStyle = '#2e3a55';
@@ -267,10 +267,10 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawCameras(cameras) {
+  function paintCameras(cameras) {
     for (const c of cameras) {
       if (c.disabledTimer <= 0) {
-        drawCone(c.x, c.y, c.facing, CAMERA.visionRange, CAMERA.visionHalfAngle, 'rgba(255, 205, 80, 0.26)', 'rgba(255, 205, 80, 0.5)');
+        cone(c.x, c.y, c.facing, CAMERA.visionRange, CAMERA.visionHalfAngle, 'rgba(255, 205, 80, 0.26)', 'rgba(255, 205, 80, 0.5)');
       }
     }
     for (const c of cameras) {
@@ -290,7 +290,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawThief(thief) {
+  function paintThief(thief) {
     const r = thief.sneaking ? THIEF.radius - 3 : THIEF.radius;
     if (thief.sneaking) {
       ctx.setLineDash([4, 4]);
@@ -321,7 +321,7 @@ export function createRenderer(canvas) {
     ctx.fillText('WREN', thief.x, thief.y + r + 14);
   }
 
-  function drawHud(state) {
+  function paintHud(state) {
     ctx.fillStyle = '#0e0c14';
     ctx.fillRect(0, 0, FIELD.width, HUD_HEIGHT);
     ctx.strokeStyle = '#2c2838';
@@ -389,7 +389,7 @@ export function createRenderer(canvas) {
     ctx.textAlign = 'left';
   }
 
-  function drawOverlay(title, lines, accent) {
+  function paintOverlay(title, lines, accent) {
     ctx.fillStyle = 'rgba(8, 7, 12, 0.82)';
     ctx.fillRect(0, 0, FIELD.width, FIELD.height);
     ctx.fillStyle = accent;
@@ -405,24 +405,24 @@ export function createRenderer(canvas) {
   }
 
   function draw(state, screen, best) {
-    transform();
+    fitField();
     ctx.clearRect(-50, -50, FIELD.width + 100, FIELD.height + 100);
     ctx.fillStyle = '#0b0a12';
     ctx.fillRect(0, 0, FIELD.width, FIELD.height);
-    drawFloor(state);
-    drawDressing(state.level);
-    drawCameras(state.cameras);
-    drawGuards(state.guards);
-    drawSmoke(state.smokes);
-    for (const s of state.solids) drawSolid(s);
-    drawVault(state.level, state.thief);
-    drawDoors(state.level);
-    drawArtifacts(state.level);
-    drawThief(state.thief);
-    drawHud(state);
+    paintFloor();
+    paintDressing(state.level);
+    paintCameras(state.cameras);
+    paintGuards(state.guards);
+    paintSmoke(state.smokes);
+    for (const s of state.solids) paintSolid(s);
+    paintVault(state.level, state.thief);
+    paintDoors(state.level);
+    paintArtifacts(state.level);
+    paintThief(state.thief);
+    paintHud(state);
 
     if (screen === 'title') {
-      drawOverlay('THE MIDNIGHT VAULT', [
+      paintOverlay('THE MIDNIGHT VAULT', [
         'The Star Sapphire sleeps in the gallery vault. Three guards walk the floor,',
         'two cameras sweep the room, and one alarm stands between you and the door.',
         '',
@@ -434,10 +434,10 @@ export function createRenderer(canvas) {
         best > 0 ? `Best getaway so far: ${best}` : 'No getaway yet. Make this one clean.',
       ], '#e8c85a');
     } else if (screen === 'paused') {
-      drawOverlay('PAUSED', ['The guards hold their posts. The cameras keep sweeping.', '', 'Press P to keep moving.'], '#d8d4e8');
+      paintOverlay('PAUSED', ['The guards hold their posts. The cameras keep sweeping.', '', 'Press P to keep moving.'], '#d8d4e8');
     } else if (screen === 'won') {
       const b = state.breakdown;
-      drawOverlay('CLEAN GETAWAY', [
+      paintOverlay('CLEAN GETAWAY', [
         `The Star Sapphire is yours. Score: ${state.finalScore}`,
         '',
         `Loot ${b.loot}  ·  Time bonus ${b.timeBonus}  ·  Quiet bonus ${b.cleanBonus}`,
@@ -446,7 +446,7 @@ export function createRenderer(canvas) {
         'Press R to run it again — faster, quieter.',
       ], '#2fbf71');
     } else if (screen === 'caught') {
-      drawOverlay('CAUGHT', [
+      paintOverlay('CAUGHT', [
         `${state.caughtBy} got a hand on you under the gallery lights.`,
         `Score ${state.score} — the sapphire stays in its case tonight.`,
         '',

@@ -1,27 +1,27 @@
-// The gallery floor: one room the thief crosses, drawn from a single list of
-// solids so movement and sight agree about what blocks them. The vault sits in
-// its own antechamber, top right, behind one doorway; the exit is the service
-// door, bottom right; the thief enters bottom left. Three lanes run between
-// them: the case-lined left lane (slow, covered), the open centre floor
-// (fast, exposed) and the pillar row on the right.
+// The gallery floor: one room the thief crosses, built from a single list
+// of solids so walking and seeing agree on what blocks them. The vault
+// keeps its own antechamber at the top right, behind one doorway; the exit
+// is the service door at the bottom right, and the thief slips in at the
+// bottom left. Three lanes connect them: the case-lined left lane (slow,
+// covered), the open centre floor (fast, exposed) and the pillar row right.
 import { FIELD, HUD_HEIGHT } from './config.js';
 
 export function createLevel() {
-  // Solids block movement and sight: display cases, pillars and the vault
-  // antechamber walls. Velvet ropes are decoration only and never block.
+  // Solids block both movement and sight: display cases, pillars, and the
+  // antechamber walls. Velvet ropes are dressing and never block anyone.
   const solids = [
-    // Display cases, left lane.
+    // Display cases along the left lane.
     { x: 240, y: 240, w: 200, h: 60, kind: 'case', label: 'Jade Wing' },
     { x: 240, y: 470, w: 200, h: 60, kind: 'case', label: 'Bronze Wing' },
-    // A tall case splitting the centre.
+    // One tall case splitting the centre.
     { x: 560, y: 180, w: 60, h: 200, kind: 'case', label: 'Coin Vault' },
-    // A long case across the lower centre.
+    // One long case across the lower centre.
     { x: 700, y: 470, w: 220, h: 60, kind: 'case', label: 'Textile Wing' },
-    // Pillars, right lane.
+    // Pillars down the right lane.
     { x: 860, y: 220, w: 40, h: 40, kind: 'pillar' },
     { x: 860, y: 380, w: 40, h: 40, kind: 'pillar' },
     { x: 1020, y: 520, w: 40, h: 40, kind: 'pillar' },
-    // Vault antechamber: left wall, and the bottom wall with one doorway.
+    // Vault antechamber: its left wall, then the bottom wall with one gap.
     { x: 980, y: HUD_HEIGHT, w: 20, h: 248, kind: 'wall' },
     { x: 980, y: 300, w: 100, h: 20, kind: 'wall' },
     { x: 1180, y: 300, w: 100, h: 20, kind: 'wall' },
@@ -70,7 +70,7 @@ export function createLevel() {
     { x: FIELD.width - 6, y: 420, baseAngle: Math.PI, phase: 2.4 },
   ];
 
-  // Paintings are wall dressing; ropes mark the lanes without blocking.
+  // Paintings dress the walls; ropes mark the lanes without blocking.
   const paintings = [
     { x: 120, y: HUD_HEIGHT + 8, w: 90, h: 54, hue: 28 },
     { x: 420, y: HUD_HEIGHT + 8, w: 70, h: 54, hue: 200 },

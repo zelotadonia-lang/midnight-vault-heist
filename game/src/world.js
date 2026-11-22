@@ -1,6 +1,7 @@
-// The world: one state object and one step function. The screens are title,
-// play, paused, won and caught; only play advances the simulation. Everything
-// the renderer draws comes from here, and nothing here touches the DOM.
+// The world: one state object and one step function. The screens are
+// title, play, paused, won and caught; only play advances the simulation.
+// Everything the renderer draws comes from here, and nothing here touches
+// the DOM.
 import { SCORE, STEP, THIEF } from './config.js';
 import { createLevel } from './level.js';
 import { createGuards, updateGuards } from './guards.js';
@@ -53,18 +54,18 @@ export function resetWorld(state) {
   state.screen = SCREEN_PLAY;
 }
 
-function liveScore(state) {
+function lootScore(state) {
   return state.thief.artifacts * SCORE.artifact + (state.thief.hasVault ? SCORE.vault : 0);
 }
 
-function finalBreakdown(state) {
+function scoreBreakdown(state) {
   const timeBonus = Math.max(0, Math.round(SCORE.timeBonusMax - Math.max(0, state.time - 60) * 5));
   const cleanBonus = state.alarm.peak < SCORE.cleanAlarmBelow ? SCORE.cleanBonus : 0;
   return {
-    loot: liveScore(state),
+    loot: lootScore(state),
     timeBonus,
     cleanBonus,
-    total: liveScore(state) + timeBonus + cleanBonus,
+    total: lootScore(state) + timeBonus + cleanBonus,
   };
 }
 
@@ -109,29 +110,28 @@ export function stepWorld(state, input, actions, dt = STEP) {
   for (let i = 0; i < state.smokes.length; i += 1) state.smokes[i].timer -= dt;
   state.smokes = state.smokes.filter((s) => s.timer > 0);
 
-  for (let i = 0; i < level.artifacts.length; i += 1) {
-    const artifact = level.artifacts[i];
+  for (const artifact of level.artifacts) {
     if (!artifact.taken && Math.hypot(thief.x - artifact.x, thief.y - artifact.y) < THIEF.grabRadius) {
       artifact.taken = true;
       thief.artifacts += 1;
-      state.score = liveScore(state);
+      state.score = lootScore(state);
       events |= EVENT_PICKUP;
     }
   }
 
   if (!thief.hasVault && Math.hypot(thief.x - level.vault.x, thief.y - level.vault.y) < THIEF.grabRadius) {
     thief.hasVault = true;
-    state.score = liveScore(state);
+    state.score = lootScore(state);
     events |= EVENT_VAULT;
   }
 
   if (thief.hasVault && Math.hypot(thief.x - level.exit.x, thief.y - level.exit.y) < THIEF.exitRadius) {
     state.screen = SCREEN_WON;
-    state.breakdown = finalBreakdown(state);
+    state.breakdown = scoreBreakdown(state);
     state.finalScore = state.breakdown.total;
     return events | EVENT_WIN;
   }
 
-  state.score = liveScore(state);
+  state.score = lootScore(state);
   return events;
 }

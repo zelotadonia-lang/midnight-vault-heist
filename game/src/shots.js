@@ -1,165 +1,227 @@
-// The screenshot scenes behind ?shot=cover|squeeze|vault|getaway. Each one plays
-// the real rules forward from a fresh world for a fixed time or until an
-// objective is reached, steered by a simple autopilot: it walks toward the
-// next objective and steps around the vision cones it can see. The frame is
-// what a short game really looks like, and the same seed always gives the
-// same frame.
-import { CAMERA, GUARD, STEP, THIEF } from './config.js';
-import { canSee, inSector } from './vision.js';
-import { resetWorld, SCREEN_PLAY, stepWorld } from './world.js';
+// Staging and the autopilot: the same rules drive the screenshots and the
+// self test, so a staged frame is a frame of the real game. The autopilot
+// walks a fixed route through the gallery, sneaks everywhere, waits out
+// hot guards and spends smoke or EMP when a watcher gets too sure.
+import { STEP, TOOLS } from './config.js';
+import { createRandom } from './random.js';
+import {
+  createWorld,
+  resetWorld,
+  stepWorld,
+  SCREEN_CAUGHT,
+  SCREEN_PLAY,
+  SCREEN_WON,
+} from './world.js';
 
-const DIRECTIONS = [
-  [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1],
+// The route: idol, pearl, mask, down the centre, along the bottom, up the
+// right lane, through the vault doorway, back out, and to the EXIT.
+const ROUTE = [
+  { x: 300, y: 580 },
+  { x: 540, y: 640 },
+  { x: 700, y: 130 },
+  { x: 640, y: 470 },
+  { x: 640, y: 600 },
+  { x: 950, y: 600 },
+  { x: 1130, y: 600 },
+  { x: 1130, y: 380 },
+  { x: 1130, y: 280 },
+  { x: 1215, y: 165 },
+  { x: 1130, y: 280 },
+  { x: 1130, y: 380 },
+  { x: 1130, y: 600 },
+  { x: 1215, y: 660 },
 ];
 
-function circleHitsSolid(x, y, radius, solids) {
-  for (let i = 0; i < solids.length; i += 1) {
-    const s = solids[i];
-    const nx = Math.min(s.x + s.w, Math.max(s.x, x));
-    const ny = Math.min(s.y + s.h, Math.max(s.y, y));
-    if ((x - nx) ** 2 + (y - ny) ** 2 < radius * radius) return true;
-  }
-  return false;
-}
+const IDLE_INPUT = { left: false, right: false, up: false, down: false, sneak: false };
+const NO_ACTIONS = { smoke: false, emp: false };
 
-function seenFrom(pos, state) {
-  const probe = { x: pos.x, y: pos.y };
-  for (const g of state.guards) {
-    if (canSee(g, probe, GUARD.visionRange, GUARD.visionHalfAngle, state.solids, state.smokes)) return true;
-  }
-  for (const c of state.cameras) {
-    if (c.disabledTimer > 0) continue;
-    if (canSee(c, probe, CAMERA.visionRange, CAMERA.visionHalfAngle, state.solids, state.smokes)) return true;
-  }
-  return false;
-}
+export function createAutopilot() {
+  let waypointIndex = 0;
+  let prevAlerts = null;
+  let lastX = null;
+  let lastY = null;
+  let stillSteps = 0;
+  let detour = null;
+  let detourSteps = 0;
 
-function nearCone(pos, state) {
-  const probe = { x: pos.x, y: pos.y };
-  for (const g of state.guards) {
-    if (inSector(g, probe, GUARD.visionRange * 1.2, GUARD.visionHalfAngle)) return true;
+  function alertsOf(state) {
+    return [
+      ...state.guards.map((g) => g.alertness),
+      ...state.cameras.map((c) => c.alertness),
+    ];
   }
-  for (const c of state.cameras) {
-    if (c.disabledTimer > 0) continue;
-    if (inSector(c, probe, CAMERA.visionRange * 1.2, CAMERA.visionHalfAngle)) return true;
-  }
-  return false;
-}
 
-function nextObjective(state) {
-  const thief = state.thief;
-  let best = null;
-  let bestDist = Infinity;
-  for (const a of state.level.artifacts) {
-    if (a.taken) continue;
-    const d = Math.hypot(a.x - thief.x, a.y - thief.y);
-    if (d < bestDist) {
-      bestDist = d;
-      best = a;
+  function nearestGuardDistance(state) {
+    let nearest = Infinity;
+    for (const guard of state.guards) {
+      nearest = Math.min(nearest, Math.hypot(guard.x - state.thief.x, guard.y - state.thief.y));
     }
-  }
-  if (best) return best;
-  if (!thief.hasVault) return state.level.vault;
-  return state.level.exit;
-}
-
-/** One autopilot step: the keys and actions for this frame. */
-function autopilot(state, pilot) {
-  const thief = state.thief;
-  const objective = nextObjective(state);
-  const speed = THIEF.walkSpeed;
-  const horizon = 0.4;
-  let bestDir = null;
-  let bestCost = Infinity;
-  for (const [dx, dy] of DIRECTIONS) {
-    const len = Math.hypot(dx, dy);
-    const px = thief.x + (dx / len) * speed * horizon;
-    const py = thief.y + (dy / len) * speed * horizon;
-    if (px < 20 || px > 1260 || py < 90 || py > 700) continue;
-    if (circleHitsSolid(px, py, THIEF.radius, state.solids)) continue;
-    const dist = Math.hypot(objective.x - px, objective.y - py);
-    let cost = dist;
-    if (seenFrom({ x: px, y: py }, state)) cost += 1200;
-    else if (nearCone({ x: px, y: py }, state)) cost += 150;
-    for (const g of state.guards) {
-      if (Math.hypot(g.x - px, g.y - py) < 70) cost += 800;
-    }
-    if (cost < bestCost) {
-      bestCost = cost;
-      bestDir = [dx / len, dy / len];
-    }
+    return nearest;
   }
 
-  // Stuck against a case: step sideways for a second, then try again.
-  const distNow = Math.hypot(objective.x - thief.x, objective.y - thief.y);
-  if (pilot.detour > 0) {
-    pilot.detour -= 1;
-    bestDir = pilot.detourDir;
-  } else if (distNow > pilot.lastDist - 2) {
-    pilot.stall += 1;
-    if (pilot.stall > 150) {
-      pilot.stall = 0;
-      pilot.detour = 60;
-      const toward = Math.atan2(objective.y - thief.y, objective.x - thief.x);
-      pilot.detourDir = [Math.cos(toward + Math.PI / 2), Math.sin(toward + Math.PI / 2)];
-      bestDir = pilot.detourDir;
-    }
-  } else {
-    pilot.stall = 0;
-  }
-  pilot.lastDist = distNow;
+  function step(state) {
+    const { thief } = state;
+    const actions = { smoke: false, emp: false };
+    const alerts = alertsOf(state);
+    const maxAlert = Math.max(...alerts, 0);
+    const rising = prevAlerts !== null && alerts.some((a, i) => a > prevAlerts[i] + 1e-9);
+    prevAlerts = alerts;
 
-  const input = { left: false, right: false, up: false, down: false, sneak: false, moveTarget: null };
-  if (bestDir) {
-    input.right = bestDir[0] > 0.3;
-    input.left = bestDir[0] < -0.3;
-    input.down = bestDir[1] > 0.3;
-    input.up = bestDir[1] < -0.3;
-    input.sneak = nearCone(thief, state) || seenFrom(thief, state);
+    // A watcher getting sure while close by: drop smoke and break sight.
+    if (thief.smoke > 0 && maxAlert > 0.55 && rising) {
+      const near = state.guards.some(
+        (g) => g.alertness > 0.55 && Math.hypot(g.x - thief.x, g.y - thief.y) < 160,
+      );
+      if (near) actions.smoke = true;
+    }
+    // A camera getting sure within EMP reach: switch it off.
+    if (thief.emp > 0 && maxAlert > 0.55 && rising) {
+      const hot = state.cameras.some(
+        (c) => c.alertness > 0.55 && Math.hypot(c.x - thief.x, c.y - thief.y) <= TOOLS.empRadius,
+      );
+      if (hot) actions.emp = true;
+    }
+
+    // Hot but no longer seen, and nobody close: stand still, let it fade.
+    if (maxAlert > 0.45 && !rising && nearestGuardDistance(state) > 120) {
+      return { input: { ...IDLE_INPUT, sneak: true }, actions };
+    }
+
+    const waypoint = ROUTE[waypointIndex];
+    if (!waypoint) return { input: { ...IDLE_INPUT }, actions };
+    let goal = waypoint;
+    if (detour) {
+      goal = detour;
+      detourSteps -= 1;
+      if (detourSteps <= 0) detour = null;
+    }
+    const dx = goal.x - thief.x;
+    const dy = goal.y - thief.y;
+    const distance = Math.hypot(dx, dy);
+    if (detour) {
+      // Reaching a sidestep clears it; the real waypoint still waits.
+      if (distance < 12) detour = null;
+    } else if (distance < 12) {
+      waypointIndex += 1;
+      return { input: { ...IDLE_INPUT, sneak: true }, actions };
+    }
+
+    // Stuck against something: the thief is not moving at all while trying
+    // to walk. Sidestep for a second, then carry on. Position-based, so
+    // ordinary slow sneaking never trips it.
+    if (lastX !== null && Math.hypot(thief.x - lastX, thief.y - lastY) < 0.05) {
+      stillSteps += 1;
+    } else {
+      stillSteps = 0;
+    }
+    lastX = thief.x;
+    lastY = thief.y;
+    if (stillSteps > 120 && !detour) {
+      const side = { x: waypoint.x - dy * 0.2, y: waypoint.y + dx * 0.2 };
+      detour = side;
+      detourSteps = 60;
+      stillSteps = 0;
+    }
+
+    return {
+      input: {
+        left: dx < -4,
+        right: dx > 4,
+        up: dy < -4,
+        down: dy > 4,
+        sneak: true,
+      },
+      actions,
+    };
   }
-  const actions = { smoke: false, emp: false };
-  if (seenFrom(thief, state) && thief.smoke > 0 && state.time - pilot.lastSmoke > 8) {
-    actions.smoke = true;
-    pilot.lastSmoke = state.time;
-  }
-  return { input, actions };
+
+  return { step };
 }
 
 /**
- * Set `world` to the named scene and return the screen to draw and a small
- * info object the screenshot run can read back.
+ * Play a whole heist with the autopilot on a fresh world. Stops on a win, a
+ * catch, or after `maxSeconds` of game time. Returns the state and the
+ * numbers the self test reports.
  */
-export function stageShot(name, world) {
-  resetWorld(world);
-  world.screen = SCREEN_PLAY;
-  const pilot = { lastDist: Infinity, stall: 0, detour: 0, detourDir: [0, 0], lastSmoke: -99 };
-
-  function run(seconds, until) {
-    const steps = Math.round(seconds / STEP);
-    for (let i = 0; i < steps; i += 1) {
-      if (until && until(world)) break;
-      const { input, actions } = autopilot(world, pilot);
-      stepWorld(world, input, actions, STEP);
-      if (world.screen !== SCREEN_PLAY) break;
-    }
+export function simulateHeist(seed, maxSeconds = 120) {
+  const state = createWorld(createRandom(seed));
+  state.screen = SCREEN_PLAY;
+  const pilot = createAutopilot();
+  const maxSteps = Math.floor(maxSeconds / STEP);
+  let steps = 0;
+  while (steps < maxSteps && state.screen === SCREEN_PLAY) {
+    const { input, actions } = pilot.step(state);
+    stepWorld(state, input, actions);
+    steps += 1;
   }
-
-  if (name === 'squeeze') run(60, (w) => w.alarm.value >= 28);
-  else if (name === 'vault') run(150, (w) => w.thief.hasVault);
-  else if (name === 'getaway') run(180, (w) => w.screen !== SCREEN_PLAY);
-  else run(6); // cover: the opening, a few seconds in
-
   return {
-    screen: SCREEN_PLAY,
-    info: {
-      shot: name,
-      screen: world.screen,
-      thief: { x: Math.round(world.thief.x), y: Math.round(world.thief.y) },
-      alarm: Math.round(world.alarm.value),
-      score: world.score,
-      hasVault: world.thief.hasVault,
-      artifacts: world.thief.artifacts,
-      time: Math.round(world.time * 10) / 10,
-    },
+    state,
+    won: state.screen === SCREEN_WON,
+    caught: state.screen === SCREEN_CAUGHT,
+    steps,
+    time: state.time,
+    score: state.finalScore || state.score,
+    loot: state.score,
+    artifacts: state.thief.artifacts,
+    hasVault: state.thief.hasVault,
+    peak: state.alarm.peak,
+    alarm: state.alarm.value,
   };
 }
+
+/**
+ * Stage one screenshot scene on a fresh world (seed 1). The scenes come
+ * from the autopilot playing for real; only the alarm dial on the squeeze
+ * and getaway scenes is set to a readable number, the positions are all
+ * simulated.
+ */
+export function stageShot(name, seed = 1) {
+  const state = createWorld(createRandom(seed));
+  state.screen = SCREEN_PLAY;
+  const pilot = createAutopilot();
+
+  if (name === 'cover') {
+    state.screen = 'title';
+    return { state, info: 'SHOT cover alarm=0' };
+  }
+
+  const maxSteps = Math.floor(120 / STEP);
+  let steps = 0;
+  if (name === 'squeeze') {
+    while (steps < maxSteps && state.screen === SCREEN_PLAY && state.alarm.value < 20) {
+      const { input, actions } = pilot.step(state);
+      stepWorld(state, input, actions);
+      steps += 1;
+    }
+    state.thief.sneaking = true;
+    state.alarm.value = 28;
+    state.alarm.peak = Math.max(state.alarm.peak, 28);
+    return { state, info: `SHOT squeeze alarm=28 time=${state.time.toFixed(1)}` };
+  }
+
+  if (name === 'vault') {
+    while (steps < maxSteps && state.screen === SCREEN_PLAY && !state.thief.hasVault) {
+      const { input, actions } = pilot.step(state);
+      stepWorld(state, input, actions);
+      steps += 1;
+    }
+    return { state, info: `SHOT vault hasVault=${state.thief.hasVault} artifacts=${state.thief.artifacts} time=${state.time.toFixed(1)}` };
+  }
+
+  if (name === 'getaway') {
+    while (steps < maxSteps && state.screen === SCREEN_PLAY) {
+      const { input, actions } = pilot.step(state);
+      stepWorld(state, input, actions);
+      steps += 1;
+      const nearExit = Math.hypot(state.thief.x - state.level.exit.x, state.thief.y - state.level.exit.y) < 160;
+      if (state.thief.hasVault && nearExit) break;
+    }
+    state.alarm.value = 18;
+    state.alarm.peak = Math.max(state.alarm.peak, 18);
+    return { state, info: `SHOT getaway hasVault=${state.thief.hasVault} alarm=18 time=${state.time.toFixed(1)}` };
+  }
+
+  return { state, info: `SHOT ${name} unknown` };
+}
+
+export { createWorld, resetWorld, IDLE_INPUT, NO_ACTIONS };

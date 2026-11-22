@@ -1,5 +1,5 @@
-// Input: held keys for movement, edge-triggered actions for the tools and the
-// screens, and click-to-walk. Mouse coordinates are converted into the
+// Input: held keys for movement, edge-triggered actions for the tools and
+// the screens, and click-to-walk. Mouse coordinates are converted into the
 // 1280x720 field, whatever size the canvas is on screen.
 import { FIELD } from './config.js';
 
@@ -26,7 +26,7 @@ const KEY_ACTIONS = {
 export function createInput(canvas) {
   const held = new Set();
   const pressed = new Set();
-  const input = {
+  const state = {
     left: false,
     right: false,
     up: false,
@@ -35,12 +35,12 @@ export function createInput(canvas) {
     moveTarget: null,
   };
 
-  function refreshHeld() {
-    input.left = held.has('KeyA') || held.has('ArrowLeft');
-    input.right = held.has('KeyD') || held.has('ArrowRight');
-    input.up = held.has('KeyW') || held.has('ArrowUp');
-    input.down = held.has('KeyS') || held.has('ArrowDown');
-    input.sneak = held.has('ShiftLeft') || held.has('ShiftRight');
+  function syncHeld() {
+    state.left = held.has('KeyA') || held.has('ArrowLeft');
+    state.right = held.has('KeyD') || held.has('ArrowRight');
+    state.up = held.has('KeyW') || held.has('ArrowUp');
+    state.down = held.has('KeyS') || held.has('ArrowDown');
+    state.sneak = held.has('ShiftLeft') || held.has('ShiftRight');
   }
 
   window.addEventListener('keydown', (event) => {
@@ -52,22 +52,22 @@ export function createInput(canvas) {
       const action = KEY_ACTIONS[event.code];
       if (action) pressed.add(action);
     }
-    refreshHeld();
+    syncHeld();
   });
   window.addEventListener('keyup', (event) => {
     held.delete(event.code);
-    refreshHeld();
+    syncHeld();
   });
   window.addEventListener('blur', () => {
     held.clear();
-    refreshHeld();
+    syncHeld();
   });
 
   canvas.addEventListener('pointerdown', (event) => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = FIELD.width / rect.width;
     const scaleY = FIELD.height / rect.height;
-    input.moveTarget = {
+    state.moveTarget = {
       x: (event.clientX - rect.left) * scaleX,
       y: (event.clientY - rect.top) * scaleY,
     };
@@ -76,7 +76,7 @@ export function createInput(canvas) {
   return {
     /** The held keys, read every frame. */
     read() {
-      return input;
+      return state;
     },
     /** The edge-triggered actions since the last call; each is reported once. */
     consumeActions() {
@@ -93,7 +93,7 @@ export function createInput(canvas) {
     },
     /** Clear a stale click-to-walk target (for example when a key is pressed). */
     clearMoveTarget() {
-      input.moveTarget = null;
+      state.moveTarget = null;
     },
   };
 }

@@ -1,5 +1,5 @@
-// Every number the game agrees on: the field, the speeds, the vision rules and
-// the alarm. One place, so tuning never means hunting through the other files.
+// The numbers the whole game shares: field size, movement, sight rules,
+// the alarm, the tools and the score. Tuning lives here and nowhere else.
 export const FIELD = { width: 1280, height: 720 };
 export const HUD_HEIGHT = 72;
 export const STEP = 1 / 60;

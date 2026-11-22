@@ -1,6 +1,6 @@
-// The alarm meter: every watcher that can see the thief feeds it, it drains
-// when nobody can, and at 100 the gallery locks down — every guard hunts at
-// once until the lockdown burns out and the meter drops back.
+// The alarm meter: every watcher that can see the thief feeds it, it
+// drains when nobody can, and at 100 the gallery locks down — every guard
+// hunts at once until the lockdown burns out and the meter drops back.
 import { ALARM } from './config.js';
 
 export function createAlarm() {
@@ -9,9 +9,9 @@ export function createAlarm() {
 
 export function updateAlarm(alarm, guards, cameras, dt) {
   let feed = 0;
-  for (let i = 0; i < guards.length; i += 1) feed = Math.max(feed, guards[i].alertness);
-  for (let i = 0; i < cameras.length; i += 1) {
-    feed = Math.max(feed, cameras[i].alertness * ALARM.cameraWeight);
+  for (const guard of guards) feed = Math.max(feed, guard.alertness);
+  for (const camera of cameras) {
+    feed = Math.max(feed, camera.alertness * ALARM.cameraWeight);
   }
   if (alarm.lockdown) {
     alarm.lockdownTimer -= dt;

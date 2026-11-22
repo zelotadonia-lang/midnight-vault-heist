@@ -1,13 +1,13 @@
-// Sound, made on the spot with WebAudio: no audio files, no network. A soft
-// chime for loot, a low sting when a guard gets sure, and a slow pulse while
-// the alarm is high. M toggles it; it starts only after a key press, as
-// browsers require.
+// Sound, made on the spot with WebAudio: no audio files, no network. A
+// soft chime for loot, a low sting when a guard gets sure, and a slow pulse
+// while the alarm is high. M toggles it; it starts only after a key press,
+// as browsers require.
 export function createAudio() {
   let context = null;
   let muted = false;
   let alarmNodes = null;
 
-  function ensure() {
+  function ensureContext() {
     if (!context) {
       const AudioContext = window.AudioContext ?? window.webkitAudioContext;
       if (!AudioContext) return null;
@@ -17,8 +17,8 @@ export function createAudio() {
     return context;
   }
 
-  function tone(frequency, seconds, type, gainValue, when = 0) {
-    const ctx = ensure();
+  function beep(frequency, seconds, type, gainValue, when = 0) {
+    const ctx = ensureContext();
     if (!ctx || muted) return;
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -34,7 +34,7 @@ export function createAudio() {
 
   return {
     unlock() {
-      ensure();
+      ensureContext();
     },
     toggleMute() {
       muted = !muted;
@@ -42,37 +42,37 @@ export function createAudio() {
       return muted;
     },
     pickup() {
-      tone(880, 0.18, 'sine', 0.12);
-      tone(1318, 0.24, 'sine', 0.1, 0.07);
+      beep(880, 0.18, 'sine', 0.12);
+      beep(1318, 0.24, 'sine', 0.1, 0.07);
     },
     vault() {
-      tone(523, 0.2, 'triangle', 0.14);
-      tone(659, 0.2, 'triangle', 0.14, 0.1);
-      tone(784, 0.34, 'triangle', 0.16, 0.2);
+      beep(523, 0.2, 'triangle', 0.14);
+      beep(659, 0.2, 'triangle', 0.14, 0.1);
+      beep(784, 0.34, 'triangle', 0.16, 0.2);
     },
     sting() {
-      tone(196, 0.4, 'sawtooth', 0.08);
-      tone(147, 0.5, 'sawtooth', 0.08, 0.08);
+      beep(196, 0.4, 'sawtooth', 0.08);
+      beep(147, 0.5, 'sawtooth', 0.08, 0.08);
     },
     smoke() {
-      tone(320, 0.3, 'sine', 0.07);
+      beep(320, 0.3, 'sine', 0.07);
     },
     emp() {
-      tone(1200, 0.12, 'square', 0.05);
-      tone(500, 0.2, 'square', 0.05, 0.1);
+      beep(1200, 0.12, 'square', 0.05);
+      beep(500, 0.2, 'square', 0.05, 0.1);
     },
     win() {
-      tone(523, 0.22, 'triangle', 0.14);
-      tone(659, 0.22, 'triangle', 0.14, 0.12);
-      tone(784, 0.22, 'triangle', 0.14, 0.24);
-      tone(1046, 0.5, 'triangle', 0.16, 0.36);
+      beep(523, 0.22, 'triangle', 0.14);
+      beep(659, 0.22, 'triangle', 0.14, 0.12);
+      beep(784, 0.22, 'triangle', 0.14, 0.24);
+      beep(1046, 0.5, 'triangle', 0.16, 0.36);
     },
     lose() {
-      tone(220, 0.4, 'sawtooth', 0.1);
-      tone(174, 0.7, 'sawtooth', 0.1, 0.18);
+      beep(220, 0.4, 'sawtooth', 0.1);
+      beep(174, 0.7, 'sawtooth', 0.1, 0.18);
     },
     startAlarm() {
-      const ctx = ensure();
+      const ctx = ensureContext();
       if (!ctx || muted || alarmNodes) return;
       const oscillator = ctx.createOscillator();
       const lfo = ctx.createOscillator();

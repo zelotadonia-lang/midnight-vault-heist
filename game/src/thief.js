@@ -1,6 +1,6 @@
-// The thief: Wren. Walk with WASD or arrows, hold Shift to sneak, click to
-// walk somewhere, grab loot by touching it, spend smoke (1) and EMP (2). The
-// tools cost a charge, never money: the choice is when to spend them.
+// The thief: Wren. Walk with WASD or arrows, hold Shift to sneak, click
+// to walk somewhere, grab loot by touching it, spend smoke (1) and EMP (2).
+// The tools cost a charge, never money: the choice is when to spend them.
 import { THIEF, TOOLS } from './config.js';
 import { resolveCollision } from './vision.js';
 
@@ -29,20 +29,20 @@ export function updateThief(thief, input, dt, solids) {
   if (dx === 0 && dy === 0 && thief.moveTarget) {
     const tx = thief.moveTarget.x - thief.x;
     const ty = thief.moveTarget.y - thief.y;
-    const dist = Math.hypot(tx, ty);
-    if (dist < 8) {
+    const distance = Math.hypot(tx, ty);
+    if (distance < 8) {
       thief.moveTarget = null;
     } else {
-      dx = tx / dist;
-      dy = ty / dist;
+      dx = tx / distance;
+      dy = ty / distance;
     }
   }
-  const len = Math.hypot(dx, dy);
-  thief.moving = len > 0;
-  if (len > 0) {
+  const length = Math.hypot(dx, dy);
+  thief.moving = length > 0;
+  if (length > 0) {
     const speed = input.sneak ? THIEF.sneakSpeed : THIEF.walkSpeed;
-    thief.x += (dx / len) * speed * dt;
-    thief.y += (dy / len) * speed * dt;
+    thief.x += (dx / length) * speed * dt;
+    thief.y += (dy / length) * speed * dt;
     thief.facing = Math.atan2(dy, dx);
     resolveCollision(thief, THIEF.radius, solids);
   }
