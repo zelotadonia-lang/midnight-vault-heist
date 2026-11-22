@@ -15,11 +15,13 @@ import { buildFx, spawnFxFromEvents, updateFx } from './effects.js';
 import { buildBanter, updateBanter } from './banter.js';
 import { buildHints, updateHints } from './hints.js';
 import { updateDecoys } from './decoy.js';
+import { buildVents } from './vents.js';
+import { parBonusFor, quietBonusFor } from './partime.js';
 import { dist } from './vision.js';
 
 export function createWorld(seed = 1) {
   const level = buildLevel();
-  return {
+  const world = {
     seed,
     time: 0,
     screen: 'title',
@@ -31,10 +33,12 @@ export function createWorld(seed = 1) {
     lockdownUntil: 0,
     smokes: [],
     decoys: [],
+    vents: buildVents(),
+    vaultCheckAt: 0,
     fx: buildFx(seed),
     banter: buildBanter(),
     hints: buildHints(),
-    stats: { distance: 0, spotted: 0, toolsUsed: 0, lockdowns: 0 },
+    stats: { distance: 0, spotted: 0, toolsUsed: 0, lockdowns: 0, ventsUsed: 0 },
     events: [],
     score: 0,
     lootTaken: 0,
@@ -43,6 +47,15 @@ export function createWorld(seed = 1) {
     wonAt: 0,
     best: 0,
   };
+  // A run's seed shuffles the guards' rounds: seed 1 keeps the rounds
+  // exactly as built, any other seed starts each guard further along
+  // its own round, so no two seeds patrol alike.
+  if (seed !== 1) {
+    world.guards.forEach((guard, i) => {
+      guard.target = (guard.target + seed + i) % guard.waypoints.length;
+    });
+  }
+  return world;
 }
 
 export function hasSapphire(world) {
@@ -52,8 +65,12 @@ export function hasSapphire(world) {
 export function scoreNow(world) {
   const elapsed = world.wonAt > 0 ? world.wonAt : world.time;
   const timeBonus = Math.max(0, SCORE.timeBase - Math.round(SCORE.timeRate * elapsed));
-  const quietBonus = world.alarm.peak < ALARM.quietCeiling ? SCORE.quietBonus : 0;
-  return world.score + timeBonus + quietBonus;
+  // The par bonus only pays on a finished run; the quiet tier reads
+  // the alarm peak, so an unseen run is worth more than a merely
+  // quiet one.
+  const parBonus = world.wonAt > 0 ? parBonusFor(elapsed) : 0;
+  const quietBonus = quietBonusFor(world.alarm.peak);
+  return world.score + timeBonus + parBonus + quietBonus;
 }
 
 function collectLoot(world) {
@@ -65,7 +82,9 @@ function collectLoot(world) {
       world.score += item.value;
       world.lootTaken += 1;
       if (item.id === 'sapphire') world.sapphireTaken = true;
-      world.events.push(item.id === 'sapphire' ? 'sapphire' : 'loot');
+      world.events.push(
+        item.id === 'sapphire' ? 'sapphire' : item.id === 'crown' ? 'crown' : 'loot',
+      );
     }
   }
 }
@@ -136,5 +155,6 @@ export function blankInput() {
     useSmoke: false,
     useEmp: false,
     useDecoy: false,
+    useVent: false,
   };
 }

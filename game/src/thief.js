@@ -7,6 +7,7 @@ import { slideMove } from './level.js';
 import { dist } from './vision.js';
 import { cameraIsDown } from './cameras.js';
 import { deployDecoy } from './decoy.js';
+import { enterVent, nearestGrate, updateVent } from './vents.js';
 
 export function buildThief() {
   return {
@@ -19,6 +20,9 @@ export function buildThief() {
     smokeCharges: TOOLS.smokeCharges,
     empCharges: TOOLS.empCharges,
     decoyCharges: TOOLS.decoyCharges,
+    // Vent crawl state: null on the floor, a crawl plan in the duct.
+    vent: null,
+    inVent: false,
   };
 }
 
@@ -42,6 +46,24 @@ export function updateThief(world, input, dt) {
   const thief = world.thief;
   const keys = input.keys || new Set();
   thief.sneaking = keys.has('ShiftLeft') || keys.has('ShiftRight');
+
+  // Inside the vent duct the crawl owns movement: no keys, no tools,
+  // no click target until Wren climbs out the far grate.
+  if (updateVent(world, dt)) {
+    input.useSmoke = false;
+    input.useEmp = false;
+    input.useDecoy = false;
+    input.useVent = false;
+    input.click = null;
+    return;
+  }
+
+  // Press E beside a grate to climb into the duct.
+  if (input.useVent) {
+    const grate = nearestGrate(world.vents, thief.x, thief.y);
+    if (grate) enterVent(world, grate);
+  }
+  input.useVent = false;
 
   // A fresh click sets a destination; any movement key cancels it.
   if (input.click) {

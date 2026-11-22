@@ -86,6 +86,17 @@ export function playDecoy() {
   tone(2093, 0.16, 'sine', 0.07, 0.08);
 }
 
+export function playVent() {
+  tone(180, 0.2, 'triangle', 0.1);
+  tone(120, 0.25, 'triangle', 0.09, 0.1);
+}
+
+export function playCrown() {
+  tone(784, 0.14, 'sine', 0.13);
+  tone(988, 0.14, 'sine', 0.13, 0.09);
+  tone(1175, 0.22, 'sine', 0.12, 0.18);
+}
+
 export function playAlarmTick() {
   tone(880, 0.09, 'square', 0.05);
 }

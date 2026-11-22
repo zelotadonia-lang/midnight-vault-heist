@@ -40,6 +40,21 @@ const HINTS = [
     test: (world) =>
       world.guards.some((g) => g.alert >= 0.6) && world.thief.decoyCharges > 0,
   },
+  {
+    id: 'vent',
+    text: 'A vent grate — press E to crawl through to the vault, but it rattles.',
+    test: (world) =>
+      world.vents.grates.some((g) => {
+        const dx = g.x - world.thief.x;
+        const dy = g.y - world.thief.y;
+        return dx * dx + dy * dy < 90 * 90;
+      }),
+  },
+  {
+    id: 'crown',
+    text: 'The Crown Jewels pay 500 — but their own camera watches the door.',
+    test: (world) => world.thief.x > 960 && world.thief.y > 620 && world.thief.x < 1140,
+  },
 ];
 
 export function buildHints() {

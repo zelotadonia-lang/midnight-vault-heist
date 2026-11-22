@@ -64,10 +64,22 @@ export const TOOLS = {
 export const SCORE = {
   sapphire: 1000,
   artifact: 250,
+  crown: 500,
   // Time bonus starts here and falls 12 points a second.
   timeBase: 900,
   timeRate: 12,
   quietBonus: 400,
+};
+
+export const VENT = {
+  // How close Wren must stand to a grate to climb in.
+  grateRadius: 46,
+  crawlSpeed: 85,
+  // Alarm added when Wren climbs out: the grate rattles.
+  noiseAlarm: 10,
+  // Guards inside this radius of the exit grate hear the rattle.
+  noiseRadius: 260,
+  heardAlert: 0.5,
 };
 
 export const COLORS = {

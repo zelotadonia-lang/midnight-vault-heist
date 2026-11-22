@@ -8,6 +8,7 @@ import { GUARD } from './config.js';
 import { slideMove } from './level.js';
 import { angleDiff, angleTo, canSee, dist } from './vision.js';
 import { decoyForGuard } from './decoy.js';
+import { updateGuardMind } from './search.js';
 
 export function buildGuards() {
   return [
@@ -67,6 +68,8 @@ function turnToward(facing, goal, step) {
 
 // Does this guard have eyes on the thief right now?
 export function guardSees(world, guard) {
+  // Inside the vent duct Wren is out of every guard's sight.
+  if (world.thief.inVent) return false;
   return canSee(
     world.level.walls,
     world.smokes,
@@ -87,6 +90,11 @@ export function updateGuard(world, guard, dt) {
   if (seen) guard.alert = Math.min(1, guard.alert + rate * dt);
   else guard.alert = Math.max(0, guard.alert - GUARD.calmRate * dt);
   guard.seen = seen;
+
+  // Memory first: a guard that lost the trail investigates the last
+  // seen spot, searches after a cold hunt, or checks the vault when
+  // the alarm runs high. Handled here, it skips the patrol below.
+  if (updateGuardMind(world, guard, dt)) return;
 
   const lockdown = world.lockdownUntil > world.time;
   if (lockdown || guard.alert >= 1) {

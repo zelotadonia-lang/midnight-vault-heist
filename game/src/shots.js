@@ -260,6 +260,7 @@ export function stageShot(name, seed = 1) {
     takeLoot(world, 'mask');
     takeLoot(world, 'pearl');
     takeLoot(world, 'sapphire');
+    takeLoot(world, 'crown');
     poseGuard(marco, 500, 120, 0);
     poseGuard(iris, 600, 560, Math.PI);
     poseGuard(dario, 950, 600, -Math.PI / 2);

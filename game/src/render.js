@@ -13,6 +13,9 @@ import { drawDecoys } from './decoy.js';
 import { drawBanter } from './banter.js';
 import { drawHint } from './hints.js';
 import { drawMinimap } from './minimap.js';
+import { drawVents } from './vents.js';
+import { SIDEVAULT_ROOM } from './sidevault.js';
+import { PAR, parBonusFor, quietBonusFor } from './partime.js';
 import { gradeRun } from './grade.js';
 
 const TAU = Math.PI * 2;
@@ -43,6 +46,10 @@ function drawFloor(ctx, world) {
   const v = world.level.vault;
   ctx.fillStyle = COLORS.vaultFloor;
   ctx.fillRect(v.x, v.y, v.w, v.h);
+  // The side vault, south-east, gets the same warm tint, darker: the
+  // room holds the crown, and the tint says so before the label does.
+  ctx.fillStyle = 'rgba(42,36,23,0.85)';
+  ctx.fillRect(SIDEVAULT_ROOM.x, SIDEVAULT_ROOM.y, SIDEVAULT_ROOM.w, SIDEVAULT_ROOM.h);
   // Seeded speckle so the floor reads as stone, not flat color.
   const rng = makeRng(world.seed * 7919 + 13);
   speckle(ctx, rng, 0, 0, VIEW.width, VIEW.height, 260, 'rgba(255,255,255,0.03)');
@@ -133,6 +140,25 @@ function drawLoot(ctx, world) {
       ctx.fillStyle = '#1b1d26';
       ctx.fillRect(x - 7, y - 3, 5, 4);
       ctx.fillRect(x + 2, y - 3, 5, 4);
+    } else if (item.kind === 'crown') {
+      // The Crown Jewels: a small gold crown, three points.
+      ctx.beginPath();
+      ctx.moveTo(x - 12, y + 8);
+      ctx.lineTo(x - 12, y - 6);
+      ctx.lineTo(x - 6, y + 2);
+      ctx.lineTo(x, y - 9);
+      ctx.lineTo(x + 6, y + 2);
+      ctx.lineTo(x + 12, y - 6);
+      ctx.lineTo(x + 12, y + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff3c4';
+      ctx.beginPath();
+      ctx.arc(x - 6, y - 2, 2, 0, TAU);
+      ctx.arc(x, y - 4, 2, 0, TAU);
+      ctx.arc(x + 6, y - 2, 2, 0, TAU);
+      ctx.fill();
     } else {
       ctx.beginPath();
       ctx.arc(x, y, 10, 0, TAU);
@@ -316,7 +342,7 @@ function drawHud(ctx, world) {
   const shown = world.screen === 'won' ? scoreNow(world) : world.score;
   ctx.fillText(`SCORE ${shown}`, 640, 28);
   ctx.fillStyle = COLORS.loot;
-  ctx.fillText(`LOOT ${world.lootTaken}/4`, 800, 28);
+  ctx.fillText(`LOOT ${world.lootTaken}/${world.level.loot.length}`, 800, 28);
 
   // Tools.
   ctx.textAlign = 'right';
@@ -327,8 +353,8 @@ function drawHud(ctx, world) {
     1090,
     28,
   );
-  // Timer.
-  ctx.fillText(`${Math.floor(world.time)}s`, 1252, 28);
+  // Timer, with the par time beside it: the clock is part of the score.
+  ctx.fillText(`${Math.floor(world.time)}s / PAR ${PAR.seconds}s`, 1252, 28);
 
   // Objective line at the bottom.
   ctx.textAlign = 'center';
@@ -372,8 +398,11 @@ function drawTitle(ctx, world) {
       'pocket the three artifacts if you dare, and leave by the green EXIT.',
       '',
       'WASD or arrows to move · Click to walk · Shift to sneak',
-      '1 smoke pellet · 2 EMP pulse · 3 holo-decoy',
-      'Guards talk, the map tracks the whole gallery, a clean run earns a grade',
+      '1 smoke pellet · 2 EMP pulse · 3 holo-decoy · E vent crawl',
+      'Guards remember where they saw you,',
+      'a loud alarm sends one to check the vault',
+      'The Crown Jewels wait in the side vault, watched by their own camera',
+      'Beat par 45s for a bonus · a clean run earns a grade',
       '',
       'Click or press Enter to begin',
     ],
@@ -394,13 +423,14 @@ function drawPaused(ctx) {
 function drawWon(ctx, world) {
   const elapsed = Math.round(world.wonAt);
   const timeBonus = Math.max(0, SCORE.timeBase - SCORE.timeRate * elapsed);
-  const quiet = world.alarm.peak < ALARM.quietCeiling;
+  const par = parBonusFor(elapsed);
+  const quiet = quietBonusFor(world.alarm.peak);
   const grade = gradeRun(world);
   panel(
     ctx,
     'CLEAN GETAWAY',
     [
-      `Loot ${world.score}  ·  time bonus ${timeBonus}  ·  quiet bonus ${quiet ? SCORE.quietBonus : 0}`,
+      `Loot ${world.score}  ·  time bonus ${timeBonus}  ·  par bonus ${par}  ·  quiet bonus ${quiet}`,
       `Final score ${scoreNow(world)} in ${elapsed}s — peak alarm ${Math.round(world.alarm.peak)}`,
       '',
       ...grade.lines,
@@ -420,7 +450,7 @@ function drawCaught(ctx, world) {
     'CAUGHT',
     [
       `${world.caughtBy} caught Wren in the gallery.`,
-      `Score ${world.score} · loot ${world.lootTaken}/4 · alarm peaked at ${Math.round(world.alarm.peak)}`,
+      `Score ${world.score} · loot ${world.lootTaken}/${world.level.loot.length} · alarm peaked at ${Math.round(world.alarm.peak)}`,
       '',
       ...grade.lines,
       '',
@@ -434,6 +464,7 @@ export function render(ctx, world) {
   ctx.clearRect(0, 0, VIEW.width, VIEW.height);
   drawFloor(ctx, world);
   drawWalls(ctx, world);
+  drawVents(ctx, world);
   drawExit(ctx, world);
   drawLoot(ctx, world);
   drawCameras(ctx, world);

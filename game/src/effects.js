@@ -63,6 +63,12 @@ export function spawnFxFromEvents(world) {
     } else if (event === 'sapphire') {
       burst(fx, t.x, t.y, 26, '#7fd4ff', 130, 1.2, 4);
       fx.floats.push({ x: t.x, y: t.y - 24, text: '+1000', life: 1.4, maxLife: 1.4 });
+    } else if (event === 'crown') {
+      burst(fx, t.x, t.y, 22, '#e8b64c', 120, 1.2, 4);
+      burst(fx, t.x, t.y, 10, '#fff3c4', 80, 1.0, 3);
+      fx.floats.push({ x: t.x, y: t.y - 24, text: '+500', life: 1.4, maxLife: 1.4 });
+    } else if (event === 'vent') {
+      ring(fx, t.x, t.y, '#59d6ff', 70);
     } else if (event === 'smoke') {
       burst(fx, t.x, t.y, 10, 'rgba(200,200,210,0.8)', 40, 1.0, 6);
     } else if (event === 'emp') {

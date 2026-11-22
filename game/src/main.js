@@ -1,6 +1,6 @@
 // Boot and the main loop: a fixed 60 Hz step, screens, sound cues, and
 // the two test modes the maker uses to verify the game in a browser:
-//   ?selftest=1&seed=1  runs nine checks and reports PASS/FAIL in the
+//   ?selftest=1&seed=1  runs thirteen checks and reports PASS/FAIL in the
 //                       page title and window.__selftest
 //   ?shot=<name>&seed=1 stages one posed frame for a screenshot
 // The self-test runs the autopilot at full speed (no rendering per step),
@@ -46,6 +46,8 @@ function handleEvents(world) {
     else if (event === 'smoke') audio.playSmoke();
     else if (event === 'emp') audio.playEmp();
     else if (event === 'decoy') audio.playDecoy();
+    else if (event === 'vent') audio.playVent();
+    else if (event === 'crown') audio.playCrown();
     else if (event === 'lockdown') audio.playLockdown();
     else if (event === 'caught') audio.playCaught();
     else if (event === 'won') audio.playWin();
@@ -184,7 +186,7 @@ export function runSelfTest(seed = 1) {
     check(
       results,
       'autopilot-wins-heist',
-      run.won && world.lootTaken === 4 && world.sapphireTaken && finalScore > 2000,
+      run.won && world.lootTaken === 4 && world.sapphireTaken && finalScore >= 2833,
       `screen ${run.screen} loot ${world.lootTaken}/4 score ${finalScore} in ${run.seconds.toFixed(1)}s peak alarm ${Math.round(world.alarm.peak)}`,
     );
   }
@@ -240,6 +242,101 @@ export function runSelfTest(seed = 1) {
       'grade-ranks-runs',
       g.title === 'GHOST' && g.stars === 3 && b.title === 'BUSTED' && b.stars === 0,
       `ghost ${g.title}/${g.stars} busted ${b.title}/${b.stars}`,
+    );
+  }
+
+  // 10. The vent crawl carries Wren unseen from the central hall to
+  // the vault room, then rattles the grate on the way out: the alarm
+  // peak jumps even though nobody saw her inside the duct.
+  {
+    const world = freshPlay(seed);
+    world.thief.x = 840;
+    world.thief.y = 90;
+    const input = blankInput();
+    input.useVent = true;
+    stepWorld(world, input, dt);
+    stepFor(world, 1);
+    const hidden = world.thief.inVent;
+    stepFor(world, 4);
+    const dx = world.thief.x - 1000;
+    const dy = world.thief.y - 90;
+    check(
+      results,
+      'vent-crawl-crosses',
+      hidden &&
+        !world.thief.inVent &&
+        Math.sqrt(dx * dx + dy * dy) < 20 &&
+        world.stats.ventsUsed === 1 &&
+        world.alarm.peak >= 10,
+      `hidden ${hidden} at (${world.thief.x.toFixed(0)},${world.thief.y.toFixed(0)}) vents ${world.stats.ventsUsed} peak alarm ${Math.round(world.alarm.peak)}`,
+    );
+  }
+
+  // 11. The Crown Jewels pay 500, and the vault camera inside the side
+  // vault watches the thief who takes them.
+  {
+    const world = freshPlay(seed);
+    world.thief.x = 1060;
+    world.thief.y = 560;
+    stepFor(world, 2);
+    const crown = world.level.loot.find((l) => l.id === 'crown');
+    const vaultCam = world.cameras[2];
+    check(
+      results,
+      'crown-pays-and-camera-watches',
+      crown.taken && world.score >= 500 && (vaultCam.alert > 0.2 || world.alarm.level > 5),
+      `taken ${crown.taken} score ${world.score} cam alert ${vaultCam.alert.toFixed(2)} alarm ${world.alarm.level.toFixed(1)}`,
+    );
+  }
+
+  // 12. A guard that saw Wren and lost her investigates the last seen
+  // spot instead of going back to its round; at high alarm the
+  // nearest guard breaks off to check the vault door.
+  {
+    const world = freshPlay(seed);
+    world.thief.x = 600;
+    world.thief.y = 120;
+    stepFor(world, 1.5);
+    world.thief.x = 200;
+    world.thief.y = 600;
+    stepFor(world, 1);
+    const marco = world.guards[0];
+    const loud = freshPlay(seed);
+    loud.alarm.level = 70;
+    stepFor(loud, 1);
+    const dario = loud.guards[2];
+    check(
+      results,
+      'guard-investigates-and-checks-vault',
+      marco.state === 'investigate' &&
+        marco.lastSeen !== null &&
+        dario.state === 'vaultcheck',
+      `marco ${marco.state} dario ${dario.state}`,
+    );
+  }
+
+  // 13. Par time pays in tiers: a fast clean finish earns the fast
+  // bonus and the ghost-quiet bonus; a slow loud one earns neither.
+  {
+    const fast = {
+      score: 1750,
+      wonAt: 25,
+      time: 25,
+      alarm: { peak: 8 },
+      level: { loot: [{}, {}, {}, {}, {}] },
+    };
+    const slow = {
+      score: 1750,
+      wonAt: 60,
+      time: 60,
+      alarm: { peak: 60 },
+      level: { loot: [{}, {}, {}, {}, {}] },
+    };
+    check(
+      results,
+      'par-bonus-tiers',
+      scoreNow(fast) === 3150 && scoreNow(slow) === 1930,
+      `fast ${scoreNow(fast)} slow ${scoreNow(slow)}`,
     );
   }
 

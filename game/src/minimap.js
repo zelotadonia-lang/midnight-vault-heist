@@ -60,6 +60,15 @@ export function drawMinimap(ctx, world) {
     ctx.arc(px(cam.x), py(cam.y), 2.5, 0, Math.PI * 2);
     ctx.fill();
   }
+  // Vent grates, cyan, so the shortcut reads on the map too.
+  if (world.vents) {
+    for (const g of world.vents.grates) {
+      ctx.fillStyle = '#59d6ff';
+      ctx.beginPath();
+      ctx.arc(px(g.x), py(g.y), 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   for (const guard of world.guards) {
     ctx.fillStyle = guard.color;
     ctx.beginPath();

@@ -13,6 +13,7 @@ export function gradeRun(world) {
   const peak = world.alarm ? Math.round(world.alarm.peak) : 0;
   const elapsed = Math.round(world.wonAt > 0 ? world.wonAt : world.time);
   const loot = world.lootTaken || 0;
+  const totalLoot = world.level ? world.level.loot.length : 4;
 
   if (world.screen === 'caught') {
     return {
@@ -20,7 +21,7 @@ export function gradeRun(world) {
       stars: 0,
       lines: [
         `Spotted ${spotted} time${spotted === 1 ? '' : 's'} · alarm peaked at ${peak}`,
-        `Loot ${loot}/4 · walked ${distance} m in ${elapsed}s`,
+        `Loot ${loot}/${totalLoot} · walked ${distance} m in ${elapsed}s`,
         'The gallery keeps the sapphire. Try a quieter route.',
       ],
     };
@@ -28,12 +29,12 @@ export function gradeRun(world) {
 
   let title;
   let stars;
-  if (peak < 10 && loot === 4 && spotted === 0) {
+  if (peak < 10 && loot === totalLoot && spotted === 0) {
     title = 'GHOST';
     stars = 3;
   } else if (peak < 50) {
     title = 'SHADOW';
-    stars = loot === 4 ? 3 : 2;
+    stars = loot === totalLoot ? 3 : 2;
   } else if (peak < 80 && lockdowns === 0) {
     title = 'PROFESSIONAL';
     stars = 2;
@@ -48,7 +49,7 @@ export function gradeRun(world) {
     lines: [
       `Grade ${title}  ${starRow}`,
       `Spotted ${spotted} time${spotted === 1 ? '' : 's'} · tools used ${toolsUsed} · alarm peaked at ${peak}`,
-      `Loot ${loot}/4 · walked ${distance} m in ${elapsed}s${lockdowns > 0 ? ` · lockdowns ${lockdowns}` : ''}`,
+      `Loot ${loot}/${totalLoot} · walked ${distance} m in ${elapsed}s${lockdowns > 0 ? ` · lockdowns ${lockdowns}` : ''}`,
     ],
   };
 }

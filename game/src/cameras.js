@@ -3,10 +3,11 @@
 // a camera down for a few seconds; while it is down it sees nothing.
 
 import { CAMERA } from './config.js';
+import { SIDEVAULT_CAMERA } from './sidevault.js';
 import { canSee, dist } from './vision.js';
 
 export function buildCameras() {
-  return [
+  const cams = [
     {
       name: 'North camera',
       x: 640,
@@ -36,6 +37,9 @@ export function buildCameras() {
       seen: false,
     },
   ];
+  // A third eye inside the side vault, watching the Crown Jewels.
+  cams.push({ ...SIDEVAULT_CAMERA });
+  return cams;
 }
 
 export function cameraIsDown(camera, time) {
@@ -44,6 +48,8 @@ export function cameraIsDown(camera, time) {
 
 export function cameraSees(world, camera) {
   if (cameraIsDown(camera, world.time)) return false;
+  // Inside the vent duct Wren is out of every camera's sight.
+  if (world.thief.inVent) return false;
   return canSee(
     world.level.walls,
     world.smokes,

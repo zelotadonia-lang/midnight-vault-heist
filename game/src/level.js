@@ -10,6 +10,7 @@
 // y 200..330, vault door at x 1040..1140 on the y 240 wall.
 
 import { VIEW } from './config.js';
+import { SIDEVAULT_LOOT, SIDEVAULT_WALLS } from './sidevault.js';
 
 // Every wall is a solid rectangle {x, y, w, h}.
 export function buildWalls() {
@@ -31,6 +32,8 @@ export function buildWalls() {
     // Pillars in the central hall.
     { x: 600, y: 180, w: 36, h: 36 },
     { x: 700, y: 500, w: 36, h: 36 },
+    // The side vault in the south-east wing: its own room, its own door.
+    ...SIDEVAULT_WALLS,
   ];
 }
 
@@ -42,6 +45,8 @@ export function buildLoot() {
     { id: 'mask', name: 'Jade Mask', x: 650, y: 360, value: 250, taken: false, kind: 'mask' },
     { id: 'pearl', name: 'Black Pearl', x: 1150, y: 560, value: 250, taken: false, kind: 'pearl' },
     { id: 'sapphire', name: 'Star Sapphire', x: 1120, y: 110, value: 1000, taken: false, kind: 'sapphire' },
+    // The Crown Jewels, in the side vault: worth double, watched close.
+    { ...SIDEVAULT_LOOT },
   ];
 }
 
