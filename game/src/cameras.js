@@ -1,52 +1,83 @@
-// Cameras: fixed to the walls, sweeping their cones back and forth. A
-// camera never grabs the thief itself; it feeds the alarm. An EMP pulse
-// takes the cameras near the thief offline for a while, and the room says so.
-import { CAMERA, TOOLS } from './config.js';
-import { canSee } from './vision.js';
+// Wall cameras: fixed mounts that sweep their cones back and forth.
+// A camera that spots the thief feeds the alarm fast. An EMP pulse shuts
+// a camera down for a few seconds; while it is down it sees nothing.
 
-export function createCameras(definitions) {
-  return definitions.map((def) => ({
-    x: def.x,
-    y: def.y,
-    baseAngle: def.baseAngle,
-    phase: def.phase,
-    facing: def.baseAngle,
-    alertness: 0,
-    disabledTimer: 0,
-  }));
+import { CAMERA } from './config.js';
+import { canSee, dist } from './vision.js';
+
+export function buildCameras() {
+  return [
+    {
+      name: 'North camera',
+      x: 640,
+      y: 52,
+      baseAngle: Math.PI / 2,
+      sweep: 1.05,
+      period: 6,
+      phase: 0,
+      range: 225,
+      disabledUntil: 0,
+      alert: 0,
+      angle: Math.PI / 2,
+      seen: false,
+    },
+    {
+      name: 'East camera',
+      x: 1258,
+      y: 380,
+      baseAngle: Math.PI,
+      sweep: 0.95,
+      period: 7,
+      phase: 1.3,
+      range: CAMERA.range,
+      disabledUntil: 0,
+      alert: 0,
+      angle: Math.PI,
+      seen: false,
+    },
+  ];
 }
 
-export function updateCameras(cameras, state, dt) {
-  const { thief, solids, smokes } = state;
-  for (const camera of cameras) {
-    if (camera.disabledTimer > 0) {
-      camera.disabledTimer -= dt;
-      camera.alertness = Math.max(0, camera.alertness - 0.4 * dt);
-      continue;
-    }
-    camera.phase += dt;
-    const sweep = Math.sin((camera.phase * 2 * Math.PI) / CAMERA.sweepSeconds);
-    camera.facing = camera.baseAngle + sweep * CAMERA.sweepHalfAngle;
-    const sees = canSee(camera, thief, CAMERA.visionRange, CAMERA.visionHalfAngle, solids, smokes);
-    if (sees) {
-      const distance = Math.hypot(thief.x - camera.x, thief.y - camera.y);
-      const closeness = 1 - distance / CAMERA.visionRange;
-      const sneak = thief.sneaking ? 0.45 : 1;
-      camera.alertness = Math.min(1, camera.alertness + (0.5 + closeness * 1.3) * sneak * dt);
-    } else {
-      camera.alertness = Math.max(0, camera.alertness - 0.25 * dt);
-    }
-  }
+export function cameraIsDown(camera, time) {
+  return time < camera.disabledUntil;
 }
 
-/** Switch off every camera within EMP range of the thief. */
-export function empBurst(cameras, thief) {
-  let hit = 0;
-  for (const camera of cameras) {
-    if (Math.hypot(camera.x - thief.x, camera.y - thief.y) <= TOOLS.empRadius) {
-      camera.disabledTimer = CAMERA.disabledSeconds;
-      hit += 1;
+export function cameraSees(world, camera) {
+  if (cameraIsDown(camera, world.time)) return false;
+  return canSee(
+    world.level.walls,
+    world.smokes,
+    camera.x,
+    camera.y,
+    camera.angle,
+    camera.range,
+    CAMERA.halfAngle,
+    world.thief.x,
+    world.thief.y,
+  );
+}
+
+export function updateCamera(world, camera, dt) {
+  camera.angle =
+    camera.baseAngle +
+    camera.sweep * Math.sin((2 * Math.PI * world.time) / camera.period + camera.phase);
+  const seen = cameraSees(world, camera);
+  if (seen) camera.alert = Math.min(1, camera.alert + CAMERA.spotRate * dt);
+  else camera.alert = Math.max(0, camera.alert - CAMERA.calmRate * dt);
+  camera.seen = seen;
+}
+
+// The nearest live camera to a point, and how far away it is.
+export function nearestCamera(cameras, time, x, y) {
+  let best = null;
+  let bestD = Infinity;
+  for (const c of cameras) {
+    if (cameraIsDown(c, time)) continue;
+    const d = dist(c.x, c.y, x, y);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
     }
   }
-  return hit;
+  return { camera: best, distance: bestD };
 }

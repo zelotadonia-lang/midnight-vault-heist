@@ -1,61 +1,86 @@
-// The numbers the whole game shares: field size, movement, sight rules,
-// the alarm, the tools and the score. Tuning lives here and nowhere else.
-export const FIELD = { width: 1280, height: 720 };
-export const HUD_HEIGHT = 72;
-export const STEP = 1 / 60;
+// The Midnight Vault — shared tuning numbers for the whole game.
+// Every value here is a design choice: speeds in pixels per second,
+// radii in pixels, alarm in points from 0 to 100.
+
+export const VIEW = { width: 1280, height: 720 };
 
 export const THIEF = {
   radius: 13,
-  walkSpeed: 178,
-  sneakSpeed: 102,
-  sneakFactor: 0.45,
-  grabRadius: 34,
-  exitRadius: 38,
+  walkSpeed: 148,
+  sneakSpeed: 84,
+  pickupRadius: 38,
+  startX: 64,
+  startY: 656,
 };
 
 export const GUARD = {
-  radius: 14,
-  patrolSpeed: 72,
-  chaseSpeed: 158,
-  visionRange: 265,
-  visionHalfAngle: (38 * Math.PI) / 180,
-  catchRadius: 26,
-  spotGrace: 0.55,
+  radius: 15,
+  catchRadius: 27,
+  patrolSpeed: 58,
+  huntSpeed: 118,
+  sightRange: 225,
+  // Half of the vision cone, in radians: about 29 degrees each side.
+  sightHalfAngle: 0.51,
+  // Alertness gained per second while the thief is inside the cone.
+  spotRate: 0.55,
+  spotRateSneak: 0.28,
+  calmRate: 0.22,
 };
 
 export const CAMERA = {
-  visionRange: 250,
-  visionHalfAngle: (34 * Math.PI) / 180,
-  sweepHalfAngle: (52 * Math.PI) / 180,
-  sweepSeconds: 5.5,
-  disabledSeconds: 8,
+  range: 235,
+  halfAngle: 0.46,
+  spotRate: 0.7,
+  calmRate: 0.25,
 };
 
 export const ALARM = {
-  risePerSecond: 30,
-  decayPerSecond: 7,
-  lockdownAt: 100,
+  max: 100,
+  // Points per second added while a watcher has eyes on the thief.
+  guardRate: 16,
+  guardRateSneak: 8,
+  cameraRate: 20,
+  decayRate: 5,
   lockdownSeconds: 12,
-  lockdownReset: 42,
-  cameraWeight: 0.7,
+  // Alarm level the lockdown falls back to when it ends.
+  lockdownFallback: 55,
+  // Peak alarm under this earns the quiet bonus.
+  quietCeiling: 50,
 };
 
 export const TOOLS = {
-  smokeCount: 3,
-  smokeRadius: 95,
-  smokeSeconds: 6,
-  empCount: 2,
-  empRadius: 330,
+  smokeCharges: 3,
+  smokeRadius: 112,
+  smokeSeconds: 4,
+  empCharges: 2,
+  empRadius: 285,
+  empSeconds: 8,
 };
 
 export const SCORE = {
-  vault: 1000,
+  sapphire: 1000,
   artifact: 250,
-  timeBonusMax: 600,
-  parSeconds: 150,
-  cleanBonus: 400,
-  cleanAlarmBelow: 50,
-  caughtPenalty: 0,
+  // Time bonus starts here and falls 12 points a second.
+  timeBase: 900,
+  timeRate: 12,
+  quietBonus: 400,
 };
 
-export const BEST_KEY = 'midnight-vault-best';
+export const COLORS = {
+  floor: '#1b1d26',
+  floorAlt: '#20222e',
+  wall: '#3a3f52',
+  wallTrim: '#c9a24b',
+  vaultFloor: '#2a2417',
+  cone: 'rgba(232, 182, 76, 0.20)',
+  coneAlert: 'rgba(229, 72, 77, 0.30)',
+  cameraCone: 'rgba(240, 140, 60, 0.16)',
+  thief: '#e8e4d8',
+  guard: '#d64545',
+  camera: '#e07b39',
+  loot: '#e8b64c',
+  exit: '#35c759',
+  smoke: 'rgba(200, 200, 210, 0.55)',
+  text: '#f2efe6',
+  dim: '#9aa0b4',
+};

@@ -1,239 +1,300 @@
-// Boot, the fixed-step loop, the screens, and the two special modes:
-// ?shot=<name> stages one frame for a screenshot, ?selftest=1 runs the
-// checks synchronously and prints them where --dump-dom can read them.
-import { BEST_KEY, STEP } from './config.js';
-import { createRandom } from './random.js';
-import {
-  createWorld,
-  resetWorld,
-  stepWorld,
-  EVENT_CAUGHT,
-  EVENT_EMP,
-  EVENT_LOCKDOWN,
-  EVENT_PICKUP,
-  EVENT_SMOKE,
-  EVENT_STING,
-  EVENT_VAULT,
-  EVENT_WIN,
-  SCREEN_CAUGHT,
-  SCREEN_PAUSED,
-  SCREEN_PLAY,
-  SCREEN_TITLE,
-  SCREEN_WON,
-} from './world.js';
-import { createRenderer } from './render.js';
-import { createAudio } from './audio.js';
+// Boot and the main loop: a fixed 60 Hz step, screens, sound cues, and
+// the two test modes the maker uses to verify the game in a browser:
+//   ?selftest=1&seed=1  runs seven checks and reports PASS/FAIL in the
+//                       page title and window.__selftest
+//   ?shot=<name>&seed=1 stages one posed frame for a screenshot
+// The self-test runs the autopilot at full speed (no rendering per step),
+// so a headless browser can play the whole heist in under a second.
+
+import { VIEW } from './config.js';
+import { createWorld, stepWorld, blankInput, scoreNow } from './world.js';
+import { buildAlarm, endLockdown, updateAlarm } from './alarm.js';
+import { render } from './render.js';
 import { createInput } from './input.js';
-import { simulateHeist, stageShot, IDLE_INPUT, NO_ACTIONS } from './shots.js';
+import { runAutopilot, stageShot } from './shots.js';
+import * as audio from './audio.js';
 
-const params = new URLSearchParams(location.search);
-const seed = Number(params.get('seed') ?? '1') || 1;
-const shot = params.get('shot');
-const selftest = params.get('selftest') === '1';
+const BEST_KEY = 'midnight-vault-best';
+const STEP = 1 / 60;
 
-const canvas = document.getElementById('game');
-const statusLine = document.getElementById('status');
-const shotInfo = document.getElementById('shotinfo');
-
-let best = 0;
-try {
-  best = Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
-} catch {
-  best = 0;
-}
-
-function saveBest() {
+function readBest() {
   try {
-    localStorage.setItem(BEST_KEY, String(best));
+    return Number(window.localStorage.getItem(BEST_KEY)) || 0;
   } catch {
-    // A browser that blocks storage still plays; the best score just resets.
+    return 0;
   }
 }
 
-function announce(text) {
-  if (statusLine) statusLine.textContent = text;
-}
-
-function playEvents(events, state, audio) {
-  if (events & EVENT_PICKUP) audio.pickup();
-  if (events & EVENT_VAULT) {
-    audio.vault();
-    announce('Star Sapphire secured. Get to the EXIT.');
-  }
-  if (events & EVENT_STING) audio.sting();
-  if (events & EVENT_SMOKE) audio.smoke();
-  if (events & EVENT_EMP) audio.emp();
-  if (events & EVENT_LOCKDOWN) announce('Lockdown. Every guard is hunting.');
-  if (events & EVENT_WIN) {
-    audio.win();
-    audio.stopAlarm();
-    if (state.finalScore > best) {
-      best = state.finalScore;
-      saveBest();
-    }
-    announce(`Clean getaway. Score ${state.finalScore}.`);
-  }
-  if (events & EVENT_CAUGHT) {
-    audio.lose();
-    audio.stopAlarm();
-    announce(`${state.caughtBy} caught you. The sapphire stays in its case.`);
+function saveBest(value) {
+  try {
+    window.localStorage.setItem(BEST_KEY, String(value));
+  } catch {
+    // Private mode or no storage: the score still shows this session.
   }
 }
 
-/** The checks ?selftest=1 runs in the browser. Each returns a line. */
-function runSelfTest() {
-  const lines = [];
-  const check = (name, pass, detail) => lines.push(`${pass ? 'PASS' : 'FAIL'} ${name}: ${detail}`);
+function params() {
+  return new URLSearchParams(window.location.search);
+}
 
-  // 1. The autopilot wins the whole heist.
+// Drain the world's event queue into sounds.
+function handleEvents(world) {
+  for (const event of world.events) {
+    if (event === 'loot') audio.playPickup();
+    else if (event === 'sapphire') audio.playSapphire();
+    else if (event === 'smoke') audio.playSmoke();
+    else if (event === 'emp') audio.playEmp();
+    else if (event === 'lockdown') audio.playLockdown();
+    else if (event === 'caught') audio.playCaught();
+    else if (event === 'won') audio.playWin();
+  }
+  world.events.length = 0;
+}
+
+// ------------------------------------------------------------ self-test
+
+function check(results, name, ok, detail = '') {
+  results.push({ name, ok, detail });
+  // eslint-disable-next-line no-console
+  console.log(`SELFTEST ${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
+}
+
+function freshPlay(seed) {
+  const world = createWorld(seed);
+  world.screen = 'play';
+  return world;
+}
+
+function stepFor(world, seconds, input = blankInput()) {
+  const steps = Math.round(seconds / STEP);
+  for (let i = 0; i < steps; i++) stepWorld(world, input, STEP);
+}
+
+export function runSelfTest(seed = 1) {
+  const results = [];
+  const dt = STEP;
+
+  // 1. Standing still in the open, the alarm stays quiet.
   {
-    const outcome = simulateHeist(seed);
+    const world = freshPlay(seed);
+    stepFor(world, 5);
+    check(results, 'idle-keeps-alarm-zero', world.alarm.level === 0, `alarm ${world.alarm.level}`);
+  }
+
+  // 2. A guard watching the thief raises alertness and the alarm.
+  {
+    const world = freshPlay(seed);
+    world.thief.x = 600;
+    world.thief.y = 120;
+    stepFor(world, 3);
+    const marco = world.guards[0];
     check(
-      'autopilot-wins',
-      outcome.won && outcome.hasVault && outcome.artifacts === 3,
-      `won=${outcome.won} vault=${outcome.hasVault} artifacts=${outcome.artifacts}/3 score=${outcome.score} time=${outcome.time.toFixed(1)}s peak=${Math.round(outcome.peak)}`,
+      results,
+      'guard-spots-thief',
+      marco.alert > 0.7 && world.alarm.level > 10,
+      `alert ${marco.alert.toFixed(2)} alarm ${world.alarm.level.toFixed(1)}`,
     );
   }
 
-  // 2. Standing still for 5 seconds raises no alarm.
+  // 3. Smoke blinds the guard and spends a charge.
   {
-    const state = createWorld(createRandom(seed));
-    state.screen = SCREEN_PLAY;
-    for (let i = 0; i < 300; i += 1) stepWorld(state, IDLE_INPUT, NO_ACTIONS);
-    check('idle-quiet', state.alarm.value === 0, `alarm=${state.alarm.value}`);
+    const world = freshPlay(seed);
+    world.thief.x = 600;
+    world.thief.y = 120;
+    const input = blankInput();
+    input.useSmoke = true;
+    stepWorld(world, input, dt);
+    stepFor(world, 2);
+    const marco = world.guards[0];
+    check(
+      results,
+      'smoke-blinds-guard',
+      marco.alert < 0.05 && world.thief.smokeCharges === 2,
+      `alert ${marco.alert.toFixed(2)} charges ${world.thief.smokeCharges}`,
+    );
   }
 
-  // 3. Walking into a guard's cone raises the alarm.
+  // 4. EMP shuts the nearby camera down and the alarm stays down.
   {
-    const state = createWorld(createRandom(seed));
-    state.screen = SCREEN_PLAY;
-    const marco = state.guards[0];
-    marco.x = 300; marco.y = 150; marco.facing = 0; marco.alertness = 0;
-    state.thief.x = 400; state.thief.y = 150;
-    // Marco first walks west to his waypoint, turns, then walks east toward
-    // the thief: three seconds covers the turn and the sighting.
-    for (let i = 0; i < 180; i += 1) stepWorld(state, IDLE_INPUT, NO_ACTIONS);
-    check('guard-raises-alarm', marco.alertness >= 0.99 && state.alarm.value > 5, `alarm=${state.alarm.value.toFixed(1)} alertness=${marco.alertness.toFixed(2)}`);
+    const world = freshPlay(seed);
+    world.thief.x = 1150;
+    world.thief.y = 380;
+    const input = blankInput();
+    input.useEmp = true;
+    stepWorld(world, input, dt);
+    stepFor(world, 2);
+    const east = world.cameras[1];
+    check(
+      results,
+      'emp-disables-camera',
+      world.time < east.disabledUntil && world.thief.empCharges === 1 && world.alarm.level === 0,
+      `disabled ${world.time < east.disabledUntil} charges ${world.thief.empCharges} alarm ${world.alarm.level}`,
+    );
   }
 
-  // 4. Smoke blocks a guard's sight.
+  // 5. Alarm 100 locks the museum down for twelve seconds, then eases.
+  // The timer is checked on the alarm module itself: in a live world a
+  // lockdown sends every guard hunting, so a thief standing still gets
+  // caught long before the twelve seconds are up, and that is the point.
   {
-    const state = createWorld(createRandom(seed));
-    state.screen = SCREEN_PLAY;
-    const marco = state.guards[0];
-    marco.x = 300; marco.y = 150; marco.facing = 0; marco.alertness = 0;
-    state.thief.x = 380; state.thief.y = 150;
-    stepWorld(state, IDLE_INPUT, { smoke: true, emp: false });
-    for (let i = 0; i < 120; i += 1) stepWorld(state, IDLE_INPUT, NO_ACTIONS);
-    check('smoke-blocks-sight', marco.alertness < 0.15 && state.thief.smoke === 2, `alertness=${marco.alertness.toFixed(2)} smokeLeft=${state.thief.smoke}`);
+    const fake = {
+      time: 0,
+      alarm: buildAlarm(),
+      lockdownUntil: 0,
+      thief: { sneaking: false },
+      events: [],
+    };
+    fake.alarm.level = 100;
+    updateAlarm(fake, { guards: 0, cameras: 0 }, dt);
+    const locked = fake.time < fake.lockdownUntil;
+    for (let i = 0; i < Math.round(13 / dt); i++) {
+      fake.time += dt;
+      endLockdown(fake);
+      updateAlarm(fake, { guards: 0, cameras: 0 }, dt);
+    }
+    check(
+      results,
+      'lockdown-twelve-seconds',
+      locked && fake.lockdownUntil === 0 && fake.alarm.level < 100,
+      `locked ${locked} alarm ${fake.alarm.level.toFixed(1)}`,
+    );
   }
 
-  // 5. An EMP pulse switches a camera off.
+  // 6. A guard standing on the thief ends the run.
   {
-    const state = createWorld(createRandom(seed));
-    state.screen = SCREEN_PLAY;
-    // Under the top camera, off every patrol route: the EMP hits the camera
-    // and no guard wanders by to feed the alarm.
-    state.thief.x = 640; state.thief.y = 300;
-    stepWorld(state, IDLE_INPUT, { smoke: false, emp: true });
-    for (let i = 0; i < 120; i += 1) stepWorld(state, IDLE_INPUT, NO_ACTIONS);
-    const camera = state.cameras[0];
-    check('emp-disables-camera', camera.disabledTimer > 0 && state.alarm.value === 0, `disabled=${camera.disabledTimer.toFixed(1)}s alarm=${state.alarm.value}`);
+    const world = freshPlay(seed);
+    world.guards[0].pos.x = world.thief.x;
+    world.guards[0].pos.y = world.thief.y;
+    stepWorld(world, blankInput(), dt);
+    check(
+      results,
+      'guard-catches-thief',
+      world.screen === 'caught' && world.caughtBy === 'Marco',
+      `screen ${world.screen} by ${world.caughtBy}`,
+    );
   }
 
-  // 6. Alarm 100 trips a 12-second lockdown.
+  // 7. The autopilot plays the whole heist and wins it.
   {
-    const state = createWorld(createRandom(seed));
-    state.screen = SCREEN_PLAY;
-    const marco = state.guards[0];
-    marco.x = 300; marco.y = 150; marco.facing = 0;
-    state.thief.x = 400; state.thief.y = 150;
-    state.alarm.value = 99.5;
-    // Same patrol turn as the sighting test: three seconds for the guard to
-    // come around and the alarm to cross 100.
-    for (let i = 0; i < 180; i += 1) stepWorld(state, IDLE_INPUT, NO_ACTIONS);
-    check('lockdown-at-100', state.alarm.lockdown && state.alarm.lockdownTimer > 0, `lockdown=${state.alarm.lockdown} timer=${state.alarm.lockdownTimer.toFixed(1)}s`);
+    const run = runAutopilot(seed, 150);
+    const world = run.world;
+    const finalScore = world.screen === 'won' ? scoreNow(world) : 0;
+    check(
+      results,
+      'autopilot-wins-heist',
+      run.won && world.lootTaken === 4 && world.sapphireTaken && finalScore > 2000,
+      `screen ${run.screen} loot ${world.lootTaken}/4 score ${finalScore} in ${run.seconds.toFixed(1)}s peak alarm ${Math.round(world.alarm.peak)}`,
+    );
   }
 
-  // 7. A sure guard standing on the thief catches them.
-  {
-    const state = createWorld(createRandom(seed));
-    state.screen = SCREEN_PLAY;
-    const marco = state.guards[0];
-    marco.x = state.thief.x; marco.y = state.thief.y;
-    marco.alertness = 1;
-    for (let i = 0; i < 40; i += 1) stepWorld(state, IDLE_INPUT, NO_ACTIONS);
-    check('catch-on-contact', state.screen === SCREEN_CAUGHT, `screen=${state.screen} caughtBy=${state.caughtBy}`);
-  }
-
-  return lines;
+  const passed = results.filter((r) => r.ok).length;
+  const summary = {
+    passed,
+    total: results.length,
+    ok: passed === results.length,
+    results,
+  };
+  window.__selftest = summary;
+  document.title = `SELFTEST ${summary.ok ? 'PASS' : 'FAIL'} ${passed}/${results.length}`;
+  // eslint-disable-next-line no-console
+  console.log(`SELFTEST ${summary.ok ? 'PASS' : 'FAIL'} ${passed}/${results.length}`);
+  return summary;
 }
 
-const renderer = createRenderer(canvas);
-const audio = createAudio();
-const input = createInput(canvas);
+// ------------------------------------------------------------ boot
 
-if (selftest) {
-  const lines = runSelfTest();
-  const passed = lines.filter((line) => line.startsWith('PASS')).length;
-  const summary = `SELFTEST ${passed}/${lines.length} ${passed === lines.length ? 'PASS' : 'FAIL'}`;
-  document.title = summary;
-  if (shotInfo) shotInfo.textContent = [summary, ...lines].join('\n');
-  const outcome = simulateHeist(seed);
-  renderer.draw(outcome.state, outcome.state.screen, best);
-} else if (shot) {
-  // One frozen, deterministic frame for the screenshot.
-  const staged = stageShot(shot, seed);
-  renderer.draw(staged.state, staged.state.screen, best);
-  if (shotInfo) shotInfo.textContent = staged.info;
-  document.title = `The Midnight Vault — ${shot}`;
-} else {
-  // The real game: a fixed 60 Hz step, decoupled from the frame rate.
-  const state = createWorld(createRandom(seed));
+function boot() {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const query = params();
+  const seed = Number(query.get('seed') || '1') || 1;
+
+  // Screenshot staging: pose the world, draw one frame, stop. The page
+  // chrome hides so the capture is the game frame alone, 1280 by 720.
+  const shot = query.get('shot');
+  if (shot) {
+    document.querySelectorAll('h1, p').forEach((el) => {
+      el.style.display = 'none';
+    });
+    canvas.style.width = '1280px';
+    canvas.style.height = '720px';
+    canvas.style.border = 'none';
+    canvas.style.borderRadius = '0';
+    const world = stageShot(shot, seed);
+    render(ctx, world);
+    document.title = `SHOT READY ${shot}`;
+    // eslint-disable-next-line no-console
+    console.log(`SHOT READY ${shot}`);
+    return;
+  }
+
+  // Self-test: run the checks, report, stop.
+  if (query.get('selftest') === '1') {
+    runSelfTest(seed);
+    return;
+  }
+
+  const world = createWorld(seed);
+  world.best = readBest();
+  const input = createInput(canvas, (code) => {
+    if (code === 'KeyM') audio.setMuted(!audio.isMuted());
+    if (code === 'KeyP' || code === 'Escape') {
+      if (world.screen === 'play') world.screen = 'paused';
+      else if (world.screen === 'paused') world.screen = 'play';
+    }
+    if (code === 'Enter' || code === 'click') {
+      if (world.screen === 'title') {
+        world.screen = 'play';
+        audio.startRoomTone();
+      } else if (world.screen === 'won' || world.screen === 'caught') {
+        const fresh = createWorld(seed);
+        fresh.best = readBest();
+        Object.assign(world, fresh);
+        world.screen = 'play';
+      } else if (world.screen === 'paused') {
+        world.screen = 'play';
+      }
+    }
+  });
+
   let last = performance.now();
-  let accumulator = 0;
+  let acc = 0;
+  let alarmBeepAt = 0;
 
   function frame(now) {
     requestAnimationFrame(frame);
     const elapsed = Math.min(0.25, (now - last) / 1000);
     last = now;
-    const actions = input.consumeActions();
-    if (actions.confirm && state.screen === SCREEN_TITLE) {
-      audio.unlock();
-      resetWorld(state);
-      announce('The gallery is dark. Steal the Star Sapphire, then reach the EXIT.');
-    }
-    if (actions.confirm && (state.screen === SCREEN_WON || state.screen === SCREEN_CAUGHT)) {
-      resetWorld(state);
-    }
-    if (actions.pause) {
-      if (state.screen === SCREEN_PLAY) state.screen = SCREEN_PAUSED;
-      else if (state.screen === SCREEN_PAUSED) state.screen = SCREEN_PLAY;
-    }
-    if (actions.restart && (state.screen === SCREEN_WON || state.screen === SCREEN_CAUGHT || state.screen === SCREEN_PAUSED)) {
-      resetWorld(state);
-    }
-    if (actions.mute) audio.toggleMute();
-    if (state.screen === SCREEN_PLAY) {
-      const held = input.read();
-      if (held.left || held.right || held.up || held.down) input.clearMoveTarget();
-      accumulator += elapsed;
-      // Tools are edge-triggered: they ride on the first step of the frame.
-      let firstStep = true;
-      while (accumulator >= STEP) {
-        const toolActions = firstStep
-          ? { smoke: actions.smoke, emp: actions.emp }
-          : { smoke: false, emp: false };
-        const events = stepWorld(state, held, toolActions);
-        playEvents(events, state, audio);
-        accumulator -= STEP;
-        firstStep = false;
+    if (world.screen === 'play') {
+      acc += elapsed;
+      while (acc >= STEP) {
+        stepWorld(world, input, STEP);
+        acc -= STEP;
       }
-      if (state.alarm.value > 80) audio.startAlarm();
-      else audio.stopAlarm();
+      handleEvents(world);
+      if (world.screen === 'won') {
+        const finalScore = scoreNow(world);
+        if (finalScore > world.best) {
+          world.best = finalScore;
+          saveBest(finalScore);
+        }
+      }
+      if (world.alarm.level >= 60 && now - alarmBeepAt > 700) {
+        alarmBeepAt = now;
+        audio.playAlarmTick();
+      }
     }
-    renderer.draw(state, state.screen, best);
+    render(ctx, world);
   }
-  renderer.draw(state, state.screen, best);
   requestAnimationFrame(frame);
 }
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
+
+// Keep the pieces importable for the Node harness.
+export { createWorld, stepWorld, runAutopilot };
+export { VIEW };

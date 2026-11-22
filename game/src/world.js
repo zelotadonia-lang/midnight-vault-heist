@@ -1,137 +1,117 @@
-// The world: one state object and one step function. The screens are
-// title, play, paused, won and caught; only play advances the simulation.
-// Everything the renderer draws comes from here, and nothing here touches
-// the DOM.
-import { SCORE, STEP, THIEF } from './config.js';
-import { createLevel } from './level.js';
-import { createGuards, updateGuards } from './guards.js';
-import { createCameras, empBurst, updateCameras } from './cameras.js';
-import { createThief, updateThief, useSmoke } from './thief.js';
-import { createAlarm, updateAlarm } from './alarm.js';
+// The world: one object holding the whole heist, and one step function
+// that advances it. No DOM, no audio, no canvas here, so the same code
+// runs in the browser and in a plain Node test harness.
+//
+// Screens: 'title' | 'play' | 'paused' | 'won' | 'caught'. The step
+// function only simulates while the screen is 'play'.
 
-export const EVENT_PICKUP = 1;
-export const EVENT_VAULT = 2;
-export const EVENT_WIN = 4;
-export const EVENT_CAUGHT = 8;
-export const EVENT_LOCKDOWN = 16;
-export const EVENT_STING = 32;
-export const EVENT_SMOKE = 64;
-export const EVENT_EMP = 128;
+import { ALARM, SCORE, THIEF } from './config.js';
+import { buildLevel } from './level.js';
+import { buildGuards, updateGuard } from './guards.js';
+import { buildCameras, updateCamera } from './cameras.js';
+import { buildThief, updateThief } from './thief.js';
+import { buildAlarm, endLockdown, updateAlarm } from './alarm.js';
+import { dist } from './vision.js';
 
-export const SCREEN_TITLE = 'title';
-export const SCREEN_PLAY = 'play';
-export const SCREEN_PAUSED = 'paused';
-export const SCREEN_WON = 'won';
-export const SCREEN_CAUGHT = 'caught';
-
-export function createWorld(random) {
-  const level = createLevel();
-  const state = {
-    random,
-    level,
-    solids: level.solids,
-    thief: createThief(level.start),
-    guards: createGuards(level.guards),
-    cameras: createCameras(level.cameras),
-    alarm: createAlarm(),
-    smokes: [],
-    screen: SCREEN_TITLE,
-    time: 0,
-    score: 0,
-    finalScore: 0,
-    breakdown: null,
-    caughtBy: null,
-    lockdownAnnounced: false,
-  };
-  return state;
-}
-
-export function resetWorld(state) {
-  const fresh = createWorld(state.random);
-  Object.keys(fresh).forEach((key) => {
-    state[key] = fresh[key];
-  });
-  state.screen = SCREEN_PLAY;
-}
-
-function lootScore(state) {
-  return state.thief.artifacts * SCORE.artifact + (state.thief.hasVault ? SCORE.vault : 0);
-}
-
-function scoreBreakdown(state) {
-  const timeBonus = Math.max(0, Math.round(SCORE.timeBonusMax - Math.max(0, state.time - 60) * 5));
-  const cleanBonus = state.alarm.peak < SCORE.cleanAlarmBelow ? SCORE.cleanBonus : 0;
+export function createWorld(seed = 1) {
+  const level = buildLevel();
   return {
-    loot: lootScore(state),
-    timeBonus,
-    cleanBonus,
-    total: lootScore(state) + timeBonus + cleanBonus,
+    seed,
+    time: 0,
+    screen: 'title',
+    level,
+    thief: buildThief(),
+    guards: buildGuards(),
+    cameras: buildCameras(),
+    alarm: buildAlarm(),
+    lockdownUntil: 0,
+    smokes: [],
+    events: [],
+    score: 0,
+    lootTaken: 0,
+    sapphireTaken: false,
+    caughtBy: null,
+    wonAt: 0,
+    best: 0,
   };
 }
 
-/**
- * Advance the play simulation one fixed step. `input` is the held keys,
- * `actions` the edge-triggered ones (smoke, emp). Returns an event bitmask
- * for sounds and announcements.
- */
-export function stepWorld(state, input, actions, dt = STEP) {
-  if (state.screen !== SCREEN_PLAY) return 0;
-  let events = 0;
-  const { thief, guards, cameras, alarm, level } = state;
-  state.time += dt;
+export function hasSapphire(world) {
+  return world.sapphireTaken;
+}
 
-  if (actions.smoke) {
-    const cloud = useSmoke(thief, state.smokes);
-    if (cloud) events |= EVENT_SMOKE;
-  }
-  if (actions.emp && thief.emp > 0) {
-    thief.emp -= 1;
-    empBurst(cameras, thief);
-    events |= EVENT_EMP;
-  }
+export function scoreNow(world) {
+  const elapsed = world.wonAt > 0 ? world.wonAt : world.time;
+  const timeBonus = Math.max(0, SCORE.timeBase - Math.round(SCORE.timeRate * elapsed));
+  const quietBonus = world.alarm.peak < ALARM.quietCeiling ? SCORE.quietBonus : 0;
+  return world.score + timeBonus + quietBonus;
+}
 
-  updateThief(thief, input, dt, state.solids);
-  updateCameras(cameras, state, dt);
-  const wasLockdown = alarm.lockdown;
-  updateAlarm(alarm, guards, cameras, dt);
-  if (alarm.lockdown && !wasLockdown) events |= EVENT_LOCKDOWN;
-
-  const alertnessBefore = guards.map((g) => g.alertness);
-  const caught = updateGuards(guards, state, dt);
-  for (let i = 0; i < guards.length; i += 1) {
-    if (alertnessBefore[i] <= 0.62 && guards[i].alertness > 0.62) events |= EVENT_STING;
-  }
-  if (caught) {
-    state.screen = SCREEN_CAUGHT;
-    state.caughtBy = guards.find((g) => g.caught)?.name ?? 'a guard';
-    return events | EVENT_CAUGHT;
-  }
-
-  for (let i = 0; i < state.smokes.length; i += 1) state.smokes[i].timer -= dt;
-  state.smokes = state.smokes.filter((s) => s.timer > 0);
-
-  for (const artifact of level.artifacts) {
-    if (!artifact.taken && Math.hypot(thief.x - artifact.x, thief.y - artifact.y) < THIEF.grabRadius) {
-      artifact.taken = true;
-      thief.artifacts += 1;
-      state.score = lootScore(state);
-      events |= EVENT_PICKUP;
+function collectLoot(world) {
+  const thief = world.thief;
+  for (const item of world.level.loot) {
+    if (item.taken) continue;
+    if (dist(thief.x, thief.y, item.x, item.y) <= THIEF.pickupRadius) {
+      item.taken = true;
+      world.score += item.value;
+      world.lootTaken += 1;
+      if (item.id === 'sapphire') world.sapphireTaken = true;
+      world.events.push(item.id === 'sapphire' ? 'sapphire' : 'loot');
     }
   }
+}
 
-  if (!thief.hasVault && Math.hypot(thief.x - level.vault.x, thief.y - level.vault.y) < THIEF.grabRadius) {
-    thief.hasVault = true;
-    state.score = lootScore(state);
-    events |= EVENT_VAULT;
+function checkCaught(world) {
+  for (const guard of world.guards) {
+    if (dist(guard.pos.x, guard.pos.y, world.thief.x, world.thief.y) <= 27) {
+      world.screen = 'caught';
+      world.caughtBy = guard.name;
+      world.events.push('caught');
+      return true;
+    }
   }
+  return false;
+}
 
-  if (thief.hasVault && Math.hypot(thief.x - level.exit.x, thief.y - level.exit.y) < THIEF.exitRadius) {
-    state.screen = SCREEN_WON;
-    state.breakdown = scoreBreakdown(state);
-    state.finalScore = state.breakdown.total;
-    return events | EVENT_WIN;
-  }
+function checkWon(world) {
+  const exit = world.level.exit;
+  if (!world.sapphireTaken) return false;
+  if (dist(world.thief.x, world.thief.y, exit.x, exit.y) > exit.radius) return false;
+  world.screen = 'won';
+  world.wonAt = world.time;
+  world.events.push('won');
+  return true;
+}
 
-  state.score = lootScore(state);
-  return events;
+export function stepWorld(world, input, dt) {
+  if (world.screen !== 'play') return;
+  world.time += dt;
+
+  updateThief(world, input, dt);
+  for (const guard of world.guards) updateGuard(world, guard, dt);
+  for (const camera of world.cameras) updateCamera(world, camera, dt);
+
+  // Expire old smoke clouds.
+  world.smokes = world.smokes.filter((s) => world.time < s.until);
+
+  let guardsSeeing = 0;
+  let camerasSeeing = 0;
+  for (const guard of world.guards) if (guard.seen) guardsSeeing += 1;
+  for (const camera of world.cameras) if (camera.seen) camerasSeeing += 1;
+  endLockdown(world);
+  updateAlarm(world, { guards: guardsSeeing, cameras: camerasSeeing }, dt);
+
+  collectLoot(world);
+  if (checkCaught(world)) return;
+  checkWon(world);
+}
+
+// A fresh input object: keys held, one-shot tool presses, one click.
+export function blankInput() {
+  return {
+    keys: new Set(),
+    click: null,
+    useSmoke: false,
+    useEmp: false,
+  };
 }

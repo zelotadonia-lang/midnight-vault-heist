@@ -1,104 +1,101 @@
-// Sound, made on the spot with WebAudio: no audio files, no network. A
-// soft chime for loot, a low sting when a guard gets sure, and a slow pulse
-// while the alarm is high. M toggles it; it starts only after a key press,
-// as browsers require.
-export function createAudio() {
-  let context = null;
-  let muted = false;
-  let alarmNodes = null;
+// Sound, synthesized live with WebAudio: no audio files, no network.
+// A low room tone under everything, short blips for actions, a rising
+// alarm when the meter climbs, and a small fanfare for the getaway.
 
-  function ensureContext() {
-    if (!context) {
-      const AudioContext = window.AudioContext ?? window.webkitAudioContext;
-      if (!AudioContext) return null;
-      context = new AudioContext();
-    }
-    if (context.state === 'suspended') void context.resume();
-    return context;
-  }
+let ctx = null;
+let muted = false;
+let toneNodes = null;
 
-  function beep(frequency, seconds, type, gainValue, when = 0) {
-    const ctx = ensureContext();
-    if (!ctx || muted) return;
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.type = type;
-    oscillator.frequency.value = frequency;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime + when);
-    gain.gain.exponentialRampToValueAtTime(gainValue, ctx.currentTime + when + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + when + seconds);
-    oscillator.connect(gain).connect(ctx.destination);
-    oscillator.start(ctx.currentTime + when);
-    oscillator.stop(ctx.currentTime + when + seconds + 0.05);
-  }
+function ensure() {
+  if (ctx) return ctx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  ctx = new AC();
+  return ctx;
+}
 
-  return {
-    unlock() {
-      ensureContext();
-    },
-    toggleMute() {
-      muted = !muted;
-      if (muted) this.stopAlarm();
-      return muted;
-    },
-    pickup() {
-      beep(880, 0.18, 'sine', 0.12);
-      beep(1318, 0.24, 'sine', 0.1, 0.07);
-    },
-    vault() {
-      beep(523, 0.2, 'triangle', 0.14);
-      beep(659, 0.2, 'triangle', 0.14, 0.1);
-      beep(784, 0.34, 'triangle', 0.16, 0.2);
-    },
-    sting() {
-      beep(196, 0.4, 'sawtooth', 0.08);
-      beep(147, 0.5, 'sawtooth', 0.08, 0.08);
-    },
-    smoke() {
-      beep(320, 0.3, 'sine', 0.07);
-    },
-    emp() {
-      beep(1200, 0.12, 'square', 0.05);
-      beep(500, 0.2, 'square', 0.05, 0.1);
-    },
-    win() {
-      beep(523, 0.22, 'triangle', 0.14);
-      beep(659, 0.22, 'triangle', 0.14, 0.12);
-      beep(784, 0.22, 'triangle', 0.14, 0.24);
-      beep(1046, 0.5, 'triangle', 0.16, 0.36);
-    },
-    lose() {
-      beep(220, 0.4, 'sawtooth', 0.1);
-      beep(174, 0.7, 'sawtooth', 0.1, 0.18);
-    },
-    startAlarm() {
-      const ctx = ensureContext();
-      if (!ctx || muted || alarmNodes) return;
-      const oscillator = ctx.createOscillator();
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      const gain = ctx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = 660;
-      lfo.type = 'sine';
-      lfo.frequency.value = 2.2;
-      lfoGain.gain.value = 180;
-      gain.gain.value = 0.035;
-      lfo.connect(lfoGain).connect(oscillator.frequency);
-      oscillator.connect(gain).connect(ctx.destination);
-      oscillator.start();
-      lfo.start();
-      alarmNodes = { oscillator, lfo, gain };
-    },
-    stopAlarm() {
-      if (!alarmNodes) return;
-      try {
-        alarmNodes.oscillator.stop();
-        alarmNodes.lfo.stop();
-      } catch {
-        // Already stopped.
-      }
-      alarmNodes = null;
-    },
-  };
+function tone(freq, seconds, type = 'sine', volume = 0.12, when = 0) {
+  const ac = ensure();
+  if (!ac || muted) return;
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  const start = ac.currentTime + when;
+  gain.gain.setValueAtTime(0, start);
+  gain.gain.linearRampToValueAtTime(volume, start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(start);
+  osc.stop(start + seconds + 0.05);
+}
+
+export function startRoomTone() {
+  const ac = ensure();
+  if (!ac || muted || toneNodes) return;
+  const osc = ac.createOscillator();
+  const osc2 = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = 55;
+  osc2.type = 'sine';
+  osc2.frequency.value = 55.7;
+  gain.gain.value = 0.035;
+  osc.connect(gain);
+  osc2.connect(gain);
+  gain.connect(ac.destination);
+  osc.start();
+  osc2.start();
+  toneNodes = { osc, osc2, gain };
+}
+
+export function setMuted(value) {
+  muted = value;
+  if (toneNodes) toneNodes.gain.gain.value = muted ? 0 : 0.035;
+}
+
+export function isMuted() {
+  return muted;
+}
+
+export function playPickup() {
+  tone(660, 0.12, 'sine', 0.14);
+  tone(990, 0.18, 'sine', 0.12, 0.07);
+}
+
+export function playSapphire() {
+  tone(523, 0.14, 'sine', 0.14);
+  tone(659, 0.14, 'sine', 0.14, 0.09);
+  tone(784, 0.22, 'sine', 0.14, 0.18);
+  tone(1046, 0.3, 'sine', 0.12, 0.27);
+}
+
+export function playSmoke() {
+  tone(220, 0.25, 'triangle', 0.1);
+  tone(160, 0.3, 'triangle', 0.08, 0.05);
+}
+
+export function playEmp() {
+  tone(1200, 0.1, 'square', 0.05);
+  tone(300, 0.25, 'square', 0.06, 0.08);
+}
+
+export function playAlarmTick() {
+  tone(880, 0.09, 'square', 0.05);
+}
+
+export function playLockdown() {
+  tone(440, 0.3, 'sawtooth', 0.08);
+  tone(440, 0.3, 'sawtooth', 0.08, 0.35);
+}
+
+export function playCaught() {
+  tone(330, 0.25, 'sawtooth', 0.12);
+  tone(220, 0.4, 'sawtooth', 0.12, 0.2);
+}
+
+export function playWin() {
+  const notes = [523, 659, 784, 1046, 1318];
+  notes.forEach((n, i) => tone(n, 0.28, 'sine', 0.13, i * 0.11));
 }
