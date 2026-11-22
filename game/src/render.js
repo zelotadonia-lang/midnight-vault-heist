@@ -8,6 +8,12 @@ import { ALARM, COLORS, SCORE, THIEF, VIEW } from './config.js';
 import { makeRng } from './random.js';
 import { cameraIsDown } from './cameras.js';
 import { scoreNow } from './world.js';
+import { drawFx } from './effects.js';
+import { drawDecoys } from './decoy.js';
+import { drawBanter } from './banter.js';
+import { drawHint } from './hints.js';
+import { drawMinimap } from './minimap.js';
+import { gradeRun } from './grade.js';
 
 const TAU = Math.PI * 2;
 
@@ -317,7 +323,7 @@ function drawHud(ctx, world) {
   ctx.fillStyle = COLORS.text;
   ctx.font = '600 13px system-ui, sans-serif';
   ctx.fillText(
-    `[1] SMOKE ×${world.thief.smokeCharges}    [2] EMP ×${world.thief.empCharges}`,
+    `[1] SMOKE ×${world.thief.smokeCharges}  [2] EMP ×${world.thief.empCharges}  [3] DECOY ×${world.thief.decoyCharges}`,
     1090,
     28,
   );
@@ -366,7 +372,8 @@ function drawTitle(ctx, world) {
       'pocket the three artifacts if you dare, and leave by the green EXIT.',
       '',
       'WASD or arrows to move · Click to walk · Shift to sneak',
-      '1 smoke pellet · 2 EMP pulse · P pause · M mute',
+      '1 smoke pellet · 2 EMP pulse · 3 holo-decoy',
+      'Guards talk, the map tracks the whole gallery, a clean run earns a grade',
       '',
       'Click or press Enter to begin',
     ],
@@ -388,12 +395,15 @@ function drawWon(ctx, world) {
   const elapsed = Math.round(world.wonAt);
   const timeBonus = Math.max(0, SCORE.timeBase - SCORE.timeRate * elapsed);
   const quiet = world.alarm.peak < ALARM.quietCeiling;
+  const grade = gradeRun(world);
   panel(
     ctx,
     'CLEAN GETAWAY',
     [
       `Loot ${world.score}  ·  time bonus ${timeBonus}  ·  quiet bonus ${quiet ? SCORE.quietBonus : 0}`,
       `Final score ${scoreNow(world)} in ${elapsed}s — peak alarm ${Math.round(world.alarm.peak)}`,
+      '',
+      ...grade.lines,
       '',
       `Best getaway: ${Math.max(world.best, scoreNow(world))}`,
       '',
@@ -404,12 +414,15 @@ function drawWon(ctx, world) {
 }
 
 function drawCaught(ctx, world) {
+  const grade = gradeRun(world);
   panel(
     ctx,
     'CAUGHT',
     [
       `${world.caughtBy} caught Wren in the gallery.`,
       `Score ${world.score} · loot ${world.lootTaken}/4 · alarm peaked at ${Math.round(world.alarm.peak)}`,
+      '',
+      ...grade.lines,
       '',
       'Press Enter to try again',
     ],
@@ -426,8 +439,13 @@ export function render(ctx, world) {
   drawCameras(ctx, world);
   drawGuards(ctx, world);
   drawSmoke(ctx, world);
+  drawDecoys(ctx, world);
+  drawFx(ctx, world);
   drawThief(ctx, world);
+  drawBanter(ctx, world);
   drawHud(ctx, world);
+  drawMinimap(ctx, world);
+  drawHint(ctx, world);
   if (world.screen === 'title') drawTitle(ctx, world);
   else if (world.screen === 'paused') drawPaused(ctx);
   else if (world.screen === 'won') drawWon(ctx, world);

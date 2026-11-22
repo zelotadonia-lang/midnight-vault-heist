@@ -1,6 +1,6 @@
 // Boot and the main loop: a fixed 60 Hz step, screens, sound cues, and
 // the two test modes the maker uses to verify the game in a browser:
-//   ?selftest=1&seed=1  runs seven checks and reports PASS/FAIL in the
+//   ?selftest=1&seed=1  runs nine checks and reports PASS/FAIL in the
 //                       page title and window.__selftest
 //   ?shot=<name>&seed=1 stages one posed frame for a screenshot
 // The self-test runs the autopilot at full speed (no rendering per step),
@@ -12,6 +12,7 @@ import { buildAlarm, endLockdown, updateAlarm } from './alarm.js';
 import { render } from './render.js';
 import { createInput } from './input.js';
 import { runAutopilot, stageShot } from './shots.js';
+import { gradeRun } from './grade.js';
 import * as audio from './audio.js';
 
 const BEST_KEY = 'midnight-vault-best';
@@ -44,6 +45,7 @@ function handleEvents(world) {
     else if (event === 'sapphire') audio.playSapphire();
     else if (event === 'smoke') audio.playSmoke();
     else if (event === 'emp') audio.playEmp();
+    else if (event === 'decoy') audio.playDecoy();
     else if (event === 'lockdown') audio.playLockdown();
     else if (event === 'caught') audio.playCaught();
     else if (event === 'won') audio.playWin();
@@ -184,6 +186,60 @@ export function runSelfTest(seed = 1) {
       'autopilot-wins-heist',
       run.won && world.lootTaken === 4 && world.sapphireTaken && finalScore > 2000,
       `screen ${run.screen} loot ${world.lootTaken}/4 score ${finalScore} in ${run.seconds.toFixed(1)}s peak alarm ${Math.round(world.alarm.peak)}`,
+    );
+  }
+
+  // 8. The decoy pulls the nearest guard toward it and spends a charge.
+  // Marco patrols due east along y=120, so any move south toward the
+  // decoy proves the lure, not the patrol.
+  {
+    const world = freshPlay(seed);
+    world.thief.x = 600;
+    world.thief.y = 200;
+    const marco = world.guards[0];
+    const input = blankInput();
+    input.useDecoy = true;
+    stepWorld(world, input, dt);
+    stepFor(world, 2);
+    check(
+      results,
+      'decoy-lures-guard',
+      world.decoys.length === 1 &&
+        world.decoys[0].lured === 'Marco' &&
+        world.thief.decoyCharges === 0 &&
+        marco.pos.y > 150,
+      `decoys ${world.decoys.length} lured ${world.decoys[0] && world.decoys[0].lured} charges ${world.thief.decoyCharges} marco y ${marco.pos.y.toFixed(0)}`,
+    );
+  }
+
+  // 9. A clean, complete, unseen run grades GHOST with three stars;
+  // a run that ends caught grades BUSTED with none.
+  {
+    const ghost = {
+      screen: 'won',
+      lootTaken: 4,
+      sapphireTaken: true,
+      alarm: { peak: 8 },
+      wonAt: 25,
+      time: 25,
+      stats: { spotted: 0, toolsUsed: 1, lockdowns: 0, distance: 3000 },
+    };
+    const busted = {
+      screen: 'caught',
+      lootTaken: 1,
+      sapphireTaken: false,
+      alarm: { peak: 72 },
+      wonAt: 0,
+      time: 31,
+      stats: { spotted: 3, toolsUsed: 0, lockdowns: 0, distance: 1500 },
+    };
+    const g = gradeRun(ghost);
+    const b = gradeRun(busted);
+    check(
+      results,
+      'grade-ranks-runs',
+      g.title === 'GHOST' && g.stars === 3 && b.title === 'BUSTED' && b.stars === 0,
+      `ghost ${g.title}/${g.stars} busted ${b.title}/${b.stars}`,
     );
   }
 

@@ -55,6 +55,10 @@ export const TOOLS = {
   empCharges: 2,
   empRadius: 285,
   empSeconds: 8,
+  decoyCharges: 1,
+  decoySeconds: 6,
+  // A guard further than this will not bother walking over to look.
+  decoyLureRange: 420,
 };
 
 export const SCORE = {
@@ -80,6 +84,7 @@ export const COLORS = {
   camera: '#e07b39',
   loot: '#e8b64c',
   exit: '#35c759',
+  decoy: '#59d6ff',
   smoke: 'rgba(200, 200, 210, 0.55)',
   text: '#f2efe6',
   dim: '#9aa0b4',

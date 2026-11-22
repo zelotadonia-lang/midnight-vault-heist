@@ -81,6 +81,11 @@ export function playEmp() {
   tone(300, 0.25, 'square', 0.06, 0.08);
 }
 
+export function playDecoy() {
+  tone(1568, 0.12, 'sine', 0.09);
+  tone(2093, 0.16, 'sine', 0.07, 0.08);
+}
+
 export function playAlarmTick() {
   tone(880, 0.09, 'square', 0.05);
 }

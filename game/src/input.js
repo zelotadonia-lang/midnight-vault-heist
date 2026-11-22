@@ -8,6 +8,7 @@ export function createInput(canvas, onAction) {
     click: null,
     useSmoke: false,
     useEmp: false,
+    useDecoy: false,
   };
 
   window.addEventListener('keydown', (event) => {
@@ -18,6 +19,7 @@ export function createInput(canvas, onAction) {
     input.keys.add(event.code);
     if (event.code === 'Digit1') input.useSmoke = true;
     if (event.code === 'Digit2') input.useEmp = true;
+    if (event.code === 'Digit3') input.useDecoy = true;
     if (onAction) onAction(event.code);
   });
 

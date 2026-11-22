@@ -208,10 +208,22 @@ export function stageShot(name, seed = 1) {
     world.thief.y = 300;
     world.thief.sneaking = true;
     world.thief.facing = Math.PI / 2;
+    world.thief.decoyCharges = 0;
     world.alarm.level = 28;
     world.alarm.peak = 28;
     takeLoot(world, 'idol');
     takeLoot(world, 'mask');
+    // A live decoy pulls Iris off her round while Marco, suspicious,
+    // calls out across the hall.
+    world.decoys.push({ x: 770, y: 340, until: 29, lured: 'Iris' });
+    world.banter.byGuard.Marco = {
+      text: 'Someone is in the hall.',
+      kind: 'suspicious',
+      until: 27,
+      prevAlert: 0.7,
+      lockdownSeen: false,
+      chatterAt: 40,
+    };
     poseGuard(marco, 600, 120, 0, 0.5);
     poseGuard(iris, 700, 430, 0, 0.3);
     poseGuard(dario, 950, 500, Math.PI / 2);

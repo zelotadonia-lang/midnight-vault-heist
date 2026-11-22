@@ -6,6 +6,7 @@ import { THIEF, TOOLS } from './config.js';
 import { slideMove } from './level.js';
 import { dist } from './vision.js';
 import { cameraIsDown } from './cameras.js';
+import { deployDecoy } from './decoy.js';
 
 export function buildThief() {
   return {
@@ -17,6 +18,7 @@ export function buildThief() {
     clickTarget: null,
     smokeCharges: TOOLS.smokeCharges,
     empCharges: TOOLS.empCharges,
+    decoyCharges: TOOLS.decoyCharges,
   };
 }
 
@@ -81,6 +83,7 @@ export function updateThief(world, input, dt) {
   // Smoke pellet: a cloud at the thief's feet that blocks every eye.
   if (input.useSmoke && thief.smokeCharges > 0) {
     thief.smokeCharges -= 1;
+    world.stats.toolsUsed += 1;
     world.smokes.push({
       x: thief.x,
       y: thief.y,
@@ -94,6 +97,7 @@ export function updateThief(world, input, dt) {
   // EMP pulse: every live camera nearby goes dark for a while.
   if (input.useEmp && thief.empCharges > 0) {
     thief.empCharges -= 1;
+    world.stats.toolsUsed += 1;
     let hit = 0;
     for (const cam of world.cameras) {
       if (cameraIsDown(cam, world.time)) continue;
@@ -106,4 +110,11 @@ export function updateThief(world, input, dt) {
     if (hit > 0) world.events.push('emp');
   }
   input.useEmp = false;
+
+  // Holo-Decoy: a shimmering double that pulls the nearest guard over
+  // to look at it. One charge, spent on the moment that matters.
+  if (input.useDecoy && thief.decoyCharges > 0) {
+    if (deployDecoy(world)) world.stats.toolsUsed += 1;
+  }
+  input.useDecoy = false;
 }

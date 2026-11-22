@@ -11,6 +11,10 @@ import { buildGuards, updateGuard } from './guards.js';
 import { buildCameras, updateCamera } from './cameras.js';
 import { buildThief, updateThief } from './thief.js';
 import { buildAlarm, endLockdown, updateAlarm } from './alarm.js';
+import { buildFx, spawnFxFromEvents, updateFx } from './effects.js';
+import { buildBanter, updateBanter } from './banter.js';
+import { buildHints, updateHints } from './hints.js';
+import { updateDecoys } from './decoy.js';
 import { dist } from './vision.js';
 
 export function createWorld(seed = 1) {
@@ -26,6 +30,11 @@ export function createWorld(seed = 1) {
     alarm: buildAlarm(),
     lockdownUntil: 0,
     smokes: [],
+    decoys: [],
+    fx: buildFx(seed),
+    banter: buildBanter(),
+    hints: buildHints(),
+    stats: { distance: 0, spotted: 0, toolsUsed: 0, lockdowns: 0 },
     events: [],
     score: 0,
     lootTaken: 0,
@@ -87,21 +96,34 @@ export function stepWorld(world, input, dt) {
   if (world.screen !== 'play') return;
   world.time += dt;
 
+  const seenBefore = world.guards.map((g) => g.seen);
+  const px = world.thief.x;
+  const py = world.thief.y;
   updateThief(world, input, dt);
+  world.stats.distance += dist(px, py, world.thief.x, world.thief.y);
   for (const guard of world.guards) updateGuard(world, guard, dt);
   for (const camera of world.cameras) updateCamera(world, camera, dt);
 
-  // Expire old smoke clouds.
+  // Expire old smoke clouds and decoys.
   world.smokes = world.smokes.filter((s) => world.time < s.until);
+  updateDecoys(world);
 
   let guardsSeeing = 0;
   let camerasSeeing = 0;
   for (const guard of world.guards) if (guard.seen) guardsSeeing += 1;
   for (const camera of world.cameras) if (camera.seen) camerasSeeing += 1;
+  for (let i = 0; i < world.guards.length; i++) {
+    if (!seenBefore[i] && world.guards[i].seen) world.stats.spotted += 1;
+  }
   endLockdown(world);
   updateAlarm(world, { guards: guardsSeeing, cameras: camerasSeeing }, dt);
+  if (world.events[world.events.length - 1] === 'lockdown') world.stats.lockdowns += 1;
 
   collectLoot(world);
+  spawnFxFromEvents(world);
+  updateFx(world, dt);
+  updateBanter(world);
+  updateHints(world);
   if (checkCaught(world)) return;
   checkWon(world);
 }
@@ -113,5 +135,6 @@ export function blankInput() {
     click: null,
     useSmoke: false,
     useEmp: false,
+    useDecoy: false,
   };
 }

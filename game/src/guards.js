@@ -7,6 +7,7 @@
 import { GUARD } from './config.js';
 import { slideMove } from './level.js';
 import { angleDiff, angleTo, canSee, dist } from './vision.js';
+import { decoyForGuard } from './decoy.js';
 
 export function buildGuards() {
   return [
@@ -108,6 +109,28 @@ export function updateGuard(world, guard, dt) {
   }
 
   // Patrol: walk to the current waypoint, then take the next one.
+  // A live decoy that claimed this guard comes first: walk over and
+  // stare at it until it fades, then go back to the round.
+  const decoy = decoyForGuard(world, guard);
+  if (decoy && !guard.hunting) {
+    const d = dist(guard.pos.x, guard.pos.y, decoy.x, decoy.y);
+    const goal = angleTo(guard.pos.x, guard.pos.y, decoy.x, decoy.y);
+    guard.facing = turnToward(guard.facing, goal, 5 * dt);
+    if (d > 24) {
+      const step = Math.min(guard.speed * dt, d);
+      const moved = slideMove(
+        world.level.walls,
+        guard.pos.x,
+        guard.pos.y,
+        GUARD.radius,
+        Math.cos(guard.facing) * step,
+        Math.sin(guard.facing) * step,
+      );
+      guard.pos.x = moved.x;
+      guard.pos.y = moved.y;
+    }
+    return;
+  }
   guard.hunting = false;
   const wp = guard.waypoints[guard.target];
   const d = dist(guard.pos.x, guard.pos.y, wp.x, wp.y);
