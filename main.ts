@@ -7,7 +7,7 @@
 // Run it outside the grader with MAKEFUN_OUTPUT_DIR set:
 //   MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -16,8 +16,14 @@ const repoRoot = dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.MAKEFUN_OUTPUT_DIR || '/output';
 
 // Start from an empty directory so a stale file can never leak into
-// the second run and break the byte-identical check.
-if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
+// the second run and break the byte-identical check. Only the contents
+// are removed — never the output directory itself, which the grader
+// may mount with a read-only parent.
+if (existsSync(outDir)) {
+  for (const child of readdirSync(outDir)) {
+    rmSync(join(outDir, child), { recursive: true, force: true });
+  }
+}
 mkdirSync(outDir, { recursive: true });
 
 for (const name of ['game', 'screenshots']) {
